@@ -1,0 +1,154 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 2rem;
+}
+
+.header p {
+  margin: 0;
+  color: #a7b0c0;
+}
+
+.input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: #121821;
+  border: 1px solid #1f2a3a;
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+textarea {
+  width: 100%;
+  background: #0c1118;
+  border: 1px solid #1f2a3a;
+  border-radius: 12px;
+  color: #e7edf6;
+  padding: 0.75rem;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.input-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.column {
+  background: #101722;
+  border: 1px solid #1f2a3a;
+  border-radius: 16px;
+  padding: 1rem;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.column.over {
+  border-color: #4b8cff;
+  box-shadow: 0 0 0 2px rgba(75, 140, 255, 0.2);
+}
+
+.column-title {
+  font-weight: 600;
+  color: #e7edf6;
+}
+
+.column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.player-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: #0c1118;
+  border: 1px solid #1f2a3a;
+  border-radius: 12px;
+  padding: 0.75rem;
+  cursor: grab;
+}
+
+.player-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.player-name {
+  font-weight: 600;
+  color: #e7edf6;
+}
+
+.player-positions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.pill {
+  font-size: 0.8rem;
+  background: #1c2634;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  color: #c7d2e5;
+}
+
+.player-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+button {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e7edf6;
+  background: #1a2331;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.2s ease;
+}
+
+button:hover {
+  border-color: #4b8cff;
+  transform: translateY(-1px);
+}
+
+button.ghost {
+  background: transparent;
+  border: 1px solid #2c3b52;
+}
+
+button.danger {
+  background: #2d1320;
+  border: 1px solid #4d1f32;
+  color: #ffb1c2;
+}
+
+@media (max-width: 720px) {
+  .input-actions,
+  .player-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
