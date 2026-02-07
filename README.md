@@ -5,3 +5,5 @@
 codex 5.2를 사용하여 react,vite 라이브러리를 사용함
 
 DISCORD : SEXYCHAN 버그나 피드백 문의 주십시요
+
+Cloudflare redeploy trigger: 2026-02-08
