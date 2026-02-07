@@ -38,7 +38,9 @@ jobs:
         run: |
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           OWNER_NAME="${GITHUB_REPOSITORY%/*}"
-          if [[ "$REPO_NAME" == "${OWNER_NAME}.github.io" ]]; then
+          if [[ -f "public/CNAME" ]]; then
+            export VITE_BASE_PATH="/"
+          elif [[ "$REPO_NAME" == "${OWNER_NAME}.github.io" ]]; then
             export VITE_BASE_PATH="/"
           else
             export VITE_BASE_PATH="/${REPO_NAME}/"
