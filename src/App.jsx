@@ -592,7 +592,7 @@ function App() {
       <DndContext autoScroll={false} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
         <div className="guide">
           <span>Tip</span>
-          플레이어 드래그, Ctrl+클릭(맥은 Cmd+클릭) 다중선택, 팝업에서 티어별 일괄 확인이 가능합니다.
+          플레이어 드래그, Ctrl+클릭 선택 및 다중선택, 팝업에서 티어별 일괄 확인이 가능합니다.
         </div>
         <div className="columns">
           <DropColumn
@@ -688,6 +688,10 @@ function App() {
           </div>
         </div>
       )}
+
+      <footer className="site-footer">
+        제작자 sexychan | discord: sexychan | 문의 및 버그제보는 디스코드 DM으로 부탁드립니다.
+      </footer>
     </div>
   )
 }

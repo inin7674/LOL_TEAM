@@ -640,6 +640,17 @@ button.danger {
   color: #ffe0e6;
 }
 
+.site-footer {
+  margin-top: 0.4rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(10, 22, 36, 0.74);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
