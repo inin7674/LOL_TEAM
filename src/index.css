@@ -1,9 +1,16 @@
 :root {
-  font-family: "Pretendard", system-ui, -apple-system, sans-serif;
+  --text-main: #edf5ff;
+  --text-muted: #b5c6dc;
+  --panel: rgba(14, 28, 44, 0.88);
+  --surface: #0c1d2f;
+  --border: #274561;
+  --border-strong: #3e5f7e;
+  --accent: #6ab6ff;
+  font-family: "SUIT Variable", "Pretendard", "Noto Sans KR", system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #e7edf6;
-  background-color: #0b0f14;
+  color: var(--text-main);
+  background-color: #071120;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -16,11 +23,20 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #0b0f14;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(52, 104, 161, 0.42), transparent 40%),
+    radial-gradient(circle at 88% 14%, rgba(29, 80, 127, 0.35), transparent 42%),
+    linear-gradient(180deg, #081527, #040c18 60%);
 }
 
 #root {
-  max-width: 1200px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 2.5rem 1.5rem 4rem;
+}
+
+@media (max-width: 720px) {
+  #root {
+    padding: 1rem 0.85rem 2rem;
+  }
 }
