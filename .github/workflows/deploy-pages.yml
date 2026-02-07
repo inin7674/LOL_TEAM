@@ -34,19 +34,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        shell: bash
-        run: |
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          OWNER_NAME="${GITHUB_REPOSITORY%/*}"
-          if [[ -f "public/CNAME" ]]; then
-            export VITE_BASE_PATH="/"
-          elif [[ "$REPO_NAME" == "${OWNER_NAME}.github.io" ]]; then
-            export VITE_BASE_PATH="/"
-          else
-            export VITE_BASE_PATH="/${REPO_NAME}/"
-          fi
-          echo "Using VITE_BASE_PATH=$VITE_BASE_PATH"
-          npm run build
+        run: npm run build
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
