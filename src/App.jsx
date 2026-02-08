@@ -5,12 +5,17 @@ import './App.css'
 const ROUTE = {
   HOME: '/',
   NORMAL: '/normal',
+  AUCTION: '/auction',
 }
+
+const AUCTION_API_BASE = '/api/auction'
 
 const STORAGE_KEY_PLAYERS = 'lol-team:players:v1'
 const STORAGE_KEY_DRAFT = 'lol-team:draft:v1'
+const STORAGE_KEY_AUCTION_SESSION = 'lol-team:auction-session:v1'
 
 function normalizeRoute(pathname) {
+  if (pathname === ROUTE.AUCTION) return ROUTE.AUCTION
   if (pathname === ROUTE.NORMAL) return ROUTE.NORMAL
   return ROUTE.HOME
 }
@@ -19,6 +24,19 @@ const TEAM = {
   POOL: 'pool',
   A: 'teamA',
   B: 'teamB',
+}
+
+const AUCTION_TEAM_IDS = ['A', 'B', 'C', 'D']
+
+function createInitialAuctionTeams() {
+  return AUCTION_TEAM_IDS.map((teamId) => ({
+    id: teamId,
+    name: `팀 ${teamId}`,
+    captainName: '미참가',
+    captainPlayer: null,
+    points: 500,
+    players: [],
+  }))
 }
 
 const CHANGELOG_ENTRIES = [
@@ -264,6 +282,43 @@ function getTierClass(tier) {
   return map[tier] ?? 'tier-default'
 }
 
+function getTierLabel(tier, compact = false) {
+  if (!compact) {
+    if (tier === '그랜드마스터') return '그마'
+    return tier
+  }
+
+  const compactMap = {
+    챌린저: '챌',
+    그랜드마스터: '그마',
+    마스터: '마',
+    다이아: '다',
+    에메랄드: '에',
+    플래티넘: '플',
+    골드: '골',
+    실버: '실',
+    브론즈: '브',
+    아이언: '아',
+  }
+  return compactMap[tier] ?? tier
+}
+
+function getTierIcon(tier) {
+  const map = {
+    챌린저: '👑',
+    그랜드마스터: '🏆',
+    마스터: '💠',
+    다이아: '💎',
+    에메랄드: '🟢',
+    플래티넘: '🔷',
+    골드: '🥇',
+    실버: '🥈',
+    브론즈: '🥉',
+    아이언: '⚙️',
+  }
+  return map[tier] ?? '🎯'
+}
+
 function isMetadataLine(line) {
   return /(역할 아이콘|오전|오후|Lv\.)/i.test(line)
 }
@@ -322,7 +377,7 @@ function parsePlayers(text) {
     .map((l) => l.trim())
     .filter(Boolean)
 
-  return lines.map((line) => {
+  const parsed = lines.map((line) => {
     const parsed = parseNameAndDetail(line)
     if (!parsed) return null
     const { name, detail } = parsed
@@ -337,6 +392,51 @@ function parsePlayers(text) {
       team: TEAM.POOL,
     }
   }).filter(Boolean)
+
+  const byKey = new Map()
+  for (const player of parsed) {
+    const key = toPlayerKey(player.name)
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, player)
+      continue
+    }
+    byKey.set(key, {
+      ...existing,
+      tier: existing.tier || player.tier,
+      positions: [...new Set([...(existing.positions || []), ...(player.positions || [])])],
+    })
+  }
+  return Array.from(byKey.values())
+}
+
+function parseCaptainDraft(rawText) {
+  const line = String(rawText ?? '')
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .find(Boolean) ?? ''
+  if (!line) return null
+
+  const parsed = parsePlayers(line)[0]
+  if (parsed) {
+    return {
+      id: parsed.id || crypto.randomUUID(),
+      name: parsed.name,
+      tier: parsed.tier || '',
+      positions: parsed.positions || [],
+    }
+  }
+
+  const [namePart, ...detailParts] = line.split(/[\/|]/)
+  const name = (namePart || '').trim()
+  const detail = detailParts.join(' ').trim()
+  if (!name) return null
+  return {
+    id: crypto.randomUUID(),
+    name,
+    tier: extractTier(detail),
+    positions: extractPositions(detail),
+  }
 }
 
 function DraggablePlayer({ player, onAssign, onRemove, selected, onToggleSelect, ghosted }) {
@@ -370,7 +470,7 @@ function DraggablePlayer({ player, onAssign, onRemove, selected, onToggleSelect,
         <div className="player-head">
           <div className="player-name-wrap">
             <div className="player-name">{player.name}</div>
-            {player.tier && <span className={`tier-pill ${getTierClass(player.tier)}`}>{player.tier}</span>}
+            {player.tier && <span className={`tier-pill ${getTierClass(player.tier)}`}>{getTierLabel(player.tier)}</span>}
           </div>
           <button
             type="button"
@@ -408,7 +508,7 @@ function PlayerPreview({ player, groupCount }) {
         <div className="player-head">
           <div className="player-name-wrap">
             <div className="player-name">{player.name}</div>
-            {player.tier && <span className={`tier-pill ${getTierClass(player.tier)}`}>{player.tier}</span>}
+            {player.tier && <span className={`tier-pill ${getTierClass(player.tier)}`}>{getTierLabel(player.tier)}</span>}
           </div>
           <button type="button" className="delete-top">삭제</button>
         </div>
@@ -471,10 +571,46 @@ function App() {
   const [isPoolModalOpen, setIsPoolModalOpen] = useState(false)
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false)
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
+  const [isAuctionEntryOpen, setIsAuctionEntryOpen] = useState(false)
+  const [isAuctionJoinOpen, setIsAuctionJoinOpen] = useState(false)
+  const [isAuctionRosterOpen, setIsAuctionRosterOpen] = useState(false)
+  const [isCaptainJoinOpen, setIsCaptainJoinOpen] = useState(false)
+  const [isCaptainJoinBlockedOpen, setIsCaptainJoinBlockedOpen] = useState(false)
+  const [captainJoinTeamId, setCaptainJoinTeamId] = useState('')
+  const [captainJoinDraft, setCaptainJoinDraft] = useState('')
   const [route, setRoute] = useState(() => normalizeRoute(window.location.pathname))
   const [isCapturing, setIsCapturing] = useState(false)
+  const [isAuctionHost, setIsAuctionHost] = useState(false)
+  const [auctionHostName, setAuctionHostName] = useState('방장')
+  const [auctionRoomDraft, setAuctionRoomDraft] = useState('')
+  const [auctionRoomCode, setAuctionRoomCode] = useState('')
+  const [auctionHostSessionToken, setAuctionHostSessionToken] = useState('')
+  const [auctionSessionToken, setAuctionSessionToken] = useState('')
+  const [auctionError, setAuctionError] = useState('')
+  const [auctionBusy, setAuctionBusy] = useState(false)
+  const [auctionConnected, setAuctionConnected] = useState(false)
+  const [auctionSeconds, setAuctionSeconds] = useState(10)
+  const [auctionInput, setAuctionInput] = useState('')
+  const [auctionQueue, setAuctionQueue] = useState([])
+  const [auctionCurrent, setAuctionCurrent] = useState(null)
+  const [auctionTimeLeft, setAuctionTimeLeft] = useState(0)
+  const [auctionRunning, setAuctionRunning] = useState(false)
+  const [auctionPaused, setAuctionPaused] = useState(false)
+  const [auctionRoundEndsAt, setAuctionRoundEndsAt] = useState(0)
+  const [auctionTeams, setAuctionTeams] = useState(createInitialAuctionTeams)
+  const [auctionMyTeamId, setAuctionMyTeamId] = useState('')
+  const [auctionBidAmount, setAuctionBidAmount] = useState('')
+  const [auctionBidMap, setAuctionBidMap] = useState({})
+  const [auctionLogs, setAuctionLogs] = useState([])
+  const [isAuctionCenterUnlocked, setIsAuctionCenterUnlocked] = useState(false)
+  const [auctionCanUndo, setAuctionCanUndo] = useState(false)
+  const [isRoomCodeCopied, setIsRoomCodeCopied] = useState(false)
+  const [topMessage, setTopMessage] = useState({ text: '', type: '' })
   const teamAColumnRef = useRef(null)
   const teamBColumnRef = useRef(null)
+  const auctionWsRef = useRef(null)
+  const roomCodeToastTimerRef = useRef(null)
+  const topMessageTimerRef = useRef(null)
 
   useEffect(() => {
     const onPopState = () => {
@@ -500,12 +636,541 @@ function App() {
     }
   }, [input])
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY_AUCTION_SESSION)
+      if (!raw) return
+      const saved = JSON.parse(raw)
+      const savedRoomCode = String(saved?.roomCode || '').trim().toUpperCase()
+      setIsAuctionHost(Boolean(saved?.isAuctionHost))
+      setAuctionRoomCode(savedRoomCode)
+      setAuctionRoomDraft(savedRoomCode)
+      setAuctionHostSessionToken(String(saved?.hostSessionToken || ''))
+      setAuctionSessionToken(String(saved?.sessionToken || ''))
+      setAuctionMyTeamId(String(saved?.myTeamId || ''))
+    } catch {
+      // Ignore storage parse errors and continue with empty session.
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      const payload = {
+        isAuctionHost,
+        roomCode: auctionRoomCode,
+        hostSessionToken: auctionHostSessionToken,
+        sessionToken: auctionSessionToken,
+        myTeamId: auctionMyTeamId,
+      }
+      const hasSession = Boolean(payload.roomCode || payload.hostSessionToken || payload.sessionToken)
+      if (!hasSession) {
+        window.localStorage.removeItem(STORAGE_KEY_AUCTION_SESSION)
+        return
+      }
+      window.localStorage.setItem(STORAGE_KEY_AUCTION_SESSION, JSON.stringify(payload))
+    } catch {
+      // Ignore storage errors (private mode/quota) and keep app usable.
+    }
+  }, [isAuctionHost, auctionRoomCode, auctionHostSessionToken, auctionSessionToken, auctionMyTeamId])
+
   const navigate = (nextRoute) => {
     const target = normalizeRoute(nextRoute)
     if (target === route) return
     window.history.pushState({}, '', target)
     setRoute(target)
   }
+
+  const showTopMessage = (text, type = 'error', duration = 2200) => {
+    if (!text) return
+    if (topMessageTimerRef.current) {
+      window.clearTimeout(topMessageTimerRef.current)
+    }
+    setTopMessage({ text, type })
+    topMessageTimerRef.current = window.setTimeout(() => {
+      setTopMessage({ text: '', type: '' })
+    }, duration)
+  }
+
+  const closeAuctionSocket = () => {
+    if (!auctionWsRef.current) return
+    auctionWsRef.current.close()
+    auctionWsRef.current = null
+    setAuctionConnected(false)
+  }
+
+  const applyAuctionState = (nextState) => {
+    if (!nextState) return
+    setAuctionSeconds(nextState.config?.seconds ?? 10)
+    setAuctionTeams(Array.isArray(nextState.teams) ? nextState.teams : createInitialAuctionTeams())
+    setAuctionQueue(Array.isArray(nextState.queue) ? nextState.queue : [])
+    setAuctionCurrent(nextState.current ?? null)
+    setAuctionBidMap(nextState.bids ?? {})
+    setAuctionLogs(Array.isArray(nextState.logs) ? nextState.logs : [])
+    const running = Boolean(nextState.round?.running)
+    const paused = Boolean(nextState.round?.paused)
+    const started = Boolean(nextState.round?.started)
+    const endsAt = Number(nextState.round?.endsAt ?? 0)
+    const remainingMs = Number(nextState.round?.remainingMs ?? 0)
+    setAuctionRunning(running)
+    setAuctionPaused(paused)
+    setIsAuctionCenterUnlocked(started)
+    setAuctionRoundEndsAt(endsAt)
+    setAuctionCanUndo(Boolean(nextState.canUndo))
+    if (running) {
+      setAuctionTimeLeft(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)))
+      return
+    }
+    if (paused) {
+      setAuctionTimeLeft(Math.max(0, Math.ceil(remainingMs / 1000)))
+      return
+    }
+    if (!running && !paused) {
+      setAuctionTimeLeft(0)
+      return
+    }
+  }
+
+  const auctionRequest = async (path, options = {}, sessionToken = '') => {
+    const headers = {
+      ...(options.body ? { 'content-type': 'application/json' } : {}),
+      ...(options.headers ?? {}),
+    }
+    if (sessionToken) headers['x-room-session'] = sessionToken
+    let response
+    try {
+      response = await fetch(`${AUCTION_API_BASE}${path}`, {
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body,
+      })
+    } catch {
+      throw new Error('백엔드 연결 실패: `npm run dev:cf` 또는 Worker 서버 상태를 확인하세요.')
+    }
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('API 라우트를 찾을 수 없습니다. 로컬이면 `npm run dev:cf`를 사용하세요.')
+      }
+      throw new Error(data.error || `요청 실패 (${response.status})`)
+    }
+    return data
+  }
+
+  const connectAuctionSocket = (roomCode, sessionToken) => {
+    closeAuctionSocket()
+    if (!roomCode || !sessionToken) return
+    const wsUrl = new URL(`${AUCTION_API_BASE}/rooms/${roomCode}/ws`, window.location.origin)
+    wsUrl.searchParams.set('session', sessionToken)
+    wsUrl.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(wsUrl.toString())
+    ws.onopen = () => setAuctionConnected(true)
+    ws.onclose = () => setAuctionConnected(false)
+    ws.onerror = () => setAuctionConnected(false)
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data)
+        if (payload?.type === 'state') {
+          applyAuctionState(payload.state)
+        }
+      } catch {
+        // noop
+      }
+    }
+    auctionWsRef.current = ws
+  }
+
+  const openAuctionRoom = async (asHost) => {
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      if (asHost) {
+        const created = await auctionRequest('/rooms/create', {
+          method: 'POST',
+          body: JSON.stringify({ hostName: auctionHostName.trim() || '방장' }),
+        })
+        setIsAuctionHost(true)
+        setAuctionRoomCode(created.roomCode)
+        setAuctionRoomDraft(created.roomCode)
+        setAuctionHostSessionToken(created.hostSession ?? '')
+        setAuctionSessionToken(created.hostSession ?? '')
+        setAuctionMyTeamId('')
+        applyAuctionState(created.state)
+        setIsAuctionEntryOpen(false)
+        setIsAuctionJoinOpen(false)
+        navigate(ROUTE.AUCTION)
+        connectAuctionSocket(created.roomCode, created.hostSession ?? '')
+        return
+      }
+
+      const roomCode = auctionRoomDraft.trim().toUpperCase()
+      if (!roomCode) throw new Error('방 코드를 입력하세요.')
+      const stateRes = await auctionRequest(`/rooms/${roomCode}/state`)
+      setIsAuctionHost(false)
+      setAuctionRoomCode(roomCode)
+      setAuctionHostSessionToken('')
+      setAuctionSessionToken('')
+      setAuctionMyTeamId('')
+      applyAuctionState(stateRes.state)
+      setIsAuctionEntryOpen(false)
+      setIsAuctionJoinOpen(false)
+      navigate(ROUTE.AUCTION)
+    } catch (error) {
+      setAuctionError(error.message || '경매 방 입장에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const toggleAuctionEntryInline = () => {
+    setAuctionError('')
+    const next = !isAuctionEntryOpen
+    setIsAuctionEntryOpen(next)
+    if (!next) {
+      setIsAuctionJoinOpen(false)
+      setAuctionRoomDraft('')
+    }
+  }
+
+  const loadAuctionPlayersFromInput = async () => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken) return
+
+    const existingNameKeys = new Set()
+    const putKey = (name) => {
+      const key = toPlayerKey(name || '')
+      if (!key || key === toPlayerKey('미참가')) return
+      existingNameKeys.add(key)
+    }
+    for (const team of auctionTeams) {
+      putKey(team.captainName)
+      putKey(team.captainPlayer?.name)
+      for (const player of team.players ?? []) {
+        putKey(player.name)
+      }
+    }
+    putKey(auctionCurrent?.name)
+    for (const queued of auctionQueue) {
+      putKey(queued.name)
+    }
+
+    const players = parsePlayers(auctionInput).map((player) => ({
+      id: player.id,
+      name: player.name,
+      tier: player.tier,
+      positions: player.positions,
+    }))
+    if (players.length === 0) return
+    const uniquePlayers = []
+    for (const player of players) {
+      const key = toPlayerKey(player.name)
+      if (!key || existingNameKeys.has(key)) continue
+      existingNameKeys.add(key)
+      uniquePlayers.push(player)
+    }
+    if (uniquePlayers.length === 0) {
+      showTopMessage('중복 제외 후 추가할 플레이어가 없습니다.', 'error')
+      return
+    }
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/roster`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ players: uniquePlayers }),
+        },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+      setAuctionInput('')
+    } catch (error) {
+      setAuctionError(error.message || '명단 추가에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const drawAuctionPlayer = async () => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken) return
+    if (auctionQueue.length < 1) {
+      showTopMessage('오류: 플레이어를 추가해주세요', 'error')
+      return
+    }
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/start`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ seconds: auctionSeconds }),
+        },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+    } catch (error) {
+      setAuctionError(error.message || '경매 시작에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const submitAuctionBid = async (teamId, amountText) => {
+    if (!auctionRoomCode || !auctionSessionToken || !teamId) return
+    const amount = Number.parseInt(amountText, 10)
+    if (!Number.isFinite(amount) || amount <= 0) return
+    setAuctionError('')
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/bid`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ amount }),
+        },
+        auctionSessionToken,
+      )
+      applyAuctionState(response.state)
+      setAuctionBidAmount('')
+    } catch (error) {
+      setAuctionError(error.message || '입찰 등록에 실패했습니다.')
+    }
+  }
+
+  const openCaptainJoinModal = (teamId) => {
+    if (auctionMyTeamId && auctionMyTeamId !== teamId) {
+      setIsCaptainJoinBlockedOpen(true)
+      return
+    }
+    setCaptainJoinTeamId(teamId)
+    setCaptainJoinDraft('')
+    setIsCaptainJoinOpen(true)
+  }
+
+  const leaveCaptainTeam = async () => {
+    if (!auctionRoomCode || !auctionSessionToken || !auctionMyTeamId) return
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/leave`,
+        { method: 'POST' },
+        auctionSessionToken,
+      )
+      setAuctionSessionToken('')
+      if (isAuctionHost) {
+        setAuctionSessionToken(auctionHostSessionToken)
+      }
+      setAuctionMyTeamId('')
+      applyAuctionState(response.state)
+      closeAuctionSocket()
+      setIsCaptainJoinOpen(false)
+      setCaptainJoinTeamId('')
+      setCaptainJoinDraft('')
+    } catch (error) {
+      setAuctionError(error.message || '팀 탈퇴에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const joinCaptainToTeam = async () => {
+    if (!auctionRoomCode) return
+    const teamId = captainJoinTeamId
+    if (!teamId) return
+    const exists = auctionTeams.some((team) => team.id === teamId)
+    if (!exists) return
+    const raw = captainJoinDraft.trim()
+    if (!raw) return
+
+    const captainPlayer = parseCaptainDraft(raw)
+    if (!captainPlayer) return
+
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(`/rooms/${auctionRoomCode}/join`, {
+        method: 'POST',
+        body: JSON.stringify({
+          teamId,
+          captainName: captainPlayer.name,
+          captainPlayer,
+        }),
+      })
+      setAuctionSessionToken(response.sessionToken ?? '')
+      setAuctionMyTeamId(response.myTeamId ?? '')
+      applyAuctionState(response.state)
+      connectAuctionSocket(auctionRoomCode, response.sessionToken ?? '')
+      setIsCaptainJoinOpen(false)
+      setCaptainJoinTeamId('')
+      setCaptainJoinDraft('')
+    } catch (error) {
+      setAuctionError(error.message || '주장 참가에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const finishAuctionRound = async () => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken) return
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/finish`,
+        { method: 'POST' },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+      setAuctionBidAmount('')
+    } catch (error) {
+      setAuctionError(error.message || '라운드 종료에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const togglePauseAuctionRound = async () => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken) return
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/pause`,
+        { method: 'POST' },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+    } catch (error) {
+      setAuctionError(error.message || '일시 정지/재개에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const restartAuctionRound = async () => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken) return
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/restart`,
+        { method: 'POST' },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+      setAuctionBidAmount('')
+    } catch (error) {
+      setAuctionError(error.message || '경매 재시작에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const undoAuctionCurrent = async () => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken) return
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/undo`,
+        { method: 'POST' },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+      setAuctionBidAmount('')
+    } catch (error) {
+      setAuctionError(error.message || '되돌리기에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const copyAuctionRoomCode = async () => {
+    if (!auctionRoomCode) return
+    try {
+      await navigator.clipboard.writeText(auctionRoomCode)
+      setAuctionError('')
+      if (roomCodeToastTimerRef.current) {
+        window.clearTimeout(roomCodeToastTimerRef.current)
+      }
+      setIsRoomCodeCopied(true)
+      roomCodeToastTimerRef.current = window.setTimeout(() => {
+        setIsRoomCodeCopied(false)
+      }, 1400)
+    } catch {
+      setAuctionError('방코드 복사에 실패했습니다.')
+    }
+  }
+
+  useEffect(() => {
+    if (!auctionError) return
+    showTopMessage(auctionError, 'error')
+    setAuctionError('')
+  }, [auctionError])
+
+  useEffect(() => {
+    if (!auctionRunning || !auctionRoundEndsAt) return
+    const tick = () => {
+      setAuctionTimeLeft(Math.max(0, Math.ceil((auctionRoundEndsAt - Date.now()) / 1000)))
+    }
+    tick()
+    const timer = window.setInterval(tick, 300)
+    return () => window.clearInterval(timer)
+  }, [auctionRunning, auctionRoundEndsAt])
+
+  useEffect(() => {
+    return () => {
+      if (topMessageTimerRef.current) {
+        window.clearTimeout(topMessageTimerRef.current)
+      }
+      if (roomCodeToastTimerRef.current) {
+        window.clearTimeout(roomCodeToastTimerRef.current)
+      }
+      if (!auctionWsRef.current) return
+      auctionWsRef.current.close()
+      auctionWsRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (route === ROUTE.AUCTION || !auctionWsRef.current) return
+    auctionWsRef.current.close()
+    auctionWsRef.current = null
+    setAuctionConnected(false)
+  }, [route])
+
+  useEffect(() => {
+    if (route !== ROUTE.AUCTION) return
+    if (auctionConnected) return
+    const token = auctionSessionToken || auctionHostSessionToken
+    if (!auctionRoomCode || !token) return
+    connectAuctionSocket(auctionRoomCode, token)
+  }, [route, auctionRoomCode, auctionSessionToken, auctionHostSessionToken, auctionConnected])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (route !== ROUTE.AUCTION || !auctionRoomCode || auctionConnected) return
+    const refreshState = async () => {
+      try {
+        const response = await auctionRequest(`/rooms/${auctionRoomCode}/state`)
+        applyAuctionState(response.state)
+      } catch {
+        // noop
+      }
+    }
+    refreshState()
+    const timer = window.setInterval(refreshState, 3000)
+    return () => window.clearInterval(timer)
+  }, [route, auctionRoomCode, auctionConnected])
+
+  const myTeam = auctionTeams.find((team) => team.id === auctionMyTeamId) ?? null
+  const isAuctionFinished = isAuctionCenterUnlocked && !auctionRunning && !auctionPaused && !auctionCurrent && auctionQueue.length === 0
 
   const grouped = useMemo(() => {
     return {
@@ -514,6 +1179,11 @@ function App() {
       [TEAM.B]: players.filter((p) => p.team === TEAM.B),
     }
   }, [players])
+
+  const auctionSoldPlayers = useMemo(
+    () => auctionTeams.flatMap((team) => team.players),
+    [auctionTeams],
+  )
 
   const addFromText = (text) => {
     const parsed = parsePlayers(text)
@@ -658,16 +1328,16 @@ function App() {
       if (canCopy) {
         try {
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-          window.alert('팀 A/B 보드를 클립보드에 복사했습니다.')
+          showTopMessage('팀 A/B 보드를 클립보드에 복사했습니다.', 'success')
           return
         } catch {
-          window.alert('이미지 복사에 실패했습니다. 브라우저 권한 설정을 확인해주세요.')
+          showTopMessage('이미지 복사에 실패했습니다. 브라우저 권한 설정을 확인해주세요.', 'error')
           return
         }
       }
-      window.alert('이 브라우저는 이미지 클립보드 복사를 지원하지 않습니다.')
+      showTopMessage('이 브라우저는 이미지 클립보드 복사를 지원하지 않습니다.', 'error')
     } catch (error) {
-      window.alert('캡처를 완료하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.')
+      showTopMessage('캡처를 완료하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.', 'error')
     } finally {
       setIsCapturing(false)
     }
@@ -748,6 +1418,7 @@ function App() {
   if (route === ROUTE.HOME) {
     return (
       <div className="home-screen">
+        {topMessage.text && <div className={`top-message ${topMessage.type}`}>{topMessage.text}</div>}
         <div className="home-title-split" aria-label="LoL Team Builder">
           <span className="home-diagonal" aria-hidden="true" />
           <div className="home-lol-layer">
@@ -762,16 +1433,445 @@ function App() {
           <button type="button" className="home-start" onClick={() => navigate(ROUTE.NORMAL)}>
             일반내전
           </button>
-          <button type="button" className="home-start disabled" disabled>
-            경매내전 (준비중)
+          <button type="button" className="home-start" onClick={toggleAuctionEntryInline}>
+            경매내전
           </button>
         </div>
+        {isAuctionEntryOpen && (
+          <div className={`auction-entry-inline ${isAuctionJoinOpen ? 'open' : ''}`}>
+            {!isAuctionJoinOpen && (
+              <button type="button" className="home-start" onClick={() => openAuctionRoom(true)} disabled={auctionBusy}>
+                방만들기
+              </button>
+            )}
+            <div className={`auction-join-morph ${isAuctionJoinOpen ? 'open' : ''}`}>
+              <button
+                type="button"
+                className="home-start auction-join-trigger"
+                onClick={() => {
+                  if (isAuctionJoinOpen) return
+                  setAuctionError('')
+                  setAuctionRoomDraft('')
+                  setIsAuctionJoinOpen(true)
+                }}
+                disabled={auctionBusy}
+              >
+                방참가
+              </button>
+              <div className="auction-join-expanded">
+                <input
+                  className="auction-captain-input"
+                  type="text"
+                  value={auctionRoomDraft}
+                  maxLength={10}
+                  placeholder="코드 입력"
+                  onChange={(e) => setAuctionRoomDraft(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    e.preventDefault()
+                    openAuctionRoom(false)
+                  }}
+                />
+                <button type="button" className="tiny" onClick={() => openAuctionRoom(false)} disabled={auctionBusy}>
+                  입장
+                </button>
+                <button
+                  type="button"
+                  className="tiny auction-join-cancel"
+                  onClick={() => {
+                    setIsAuctionJoinOpen(false)
+                    setAuctionRoomDraft('')
+                    setAuctionError('')
+                  }}
+                  disabled={auctionBusy}
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (route === ROUTE.AUCTION) {
+    return (
+      <div className="app auction-page">
+        {topMessage.text && <div className={`top-message ${topMessage.type}`}>{topMessage.text}</div>}
+        <div className="page-tools auction-toolbar">
+          <button type="button" className="ghost tiny" onClick={() => navigate(ROUTE.HOME)}>
+            홈으로
+          </button>
+          <button type="button" className="ghost tiny" onClick={() => navigate(ROUTE.NORMAL)}>
+            일반내전 이동
+          </button>
+          {isAuctionHost && (
+            <label className="auction-seconds-control">
+              경매시간(초)
+              <input
+                type="number"
+                min={5}
+                max={60}
+                value={auctionSeconds}
+                onChange={(e) => setAuctionSeconds(Math.min(60, Math.max(5, Number.parseInt(e.target.value || '10', 10))))}
+              />
+            </label>
+          )}
+          <span className="auction-mode-pill auction-room-code-pill">
+            방코드 {auctionRoomCode || '-'}
+            <span className="auction-room-copy-wrap">
+              <button
+                type="button"
+                className="auction-room-copy-btn"
+                onClick={copyAuctionRoomCode}
+                disabled={!auctionRoomCode}
+                aria-label="방코드 복사"
+                title="방코드 복사"
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">content_copy</span>
+              </button>
+              {isRoomCodeCopied && <span className="auction-copy-tooltip">복사 완료</span>}
+            </span>
+          </span>
+          <span className="auction-mode-pill">{auctionConnected ? 'WS 연결됨' : 'WS 미연결'}</span>
+          <span className="auction-mode-pill">{isAuctionHost ? '방장 모드' : '참가자 모드'}</span>
+        </div>
+        <section className="auction-layout">
+          <div className="auction-team-stack">
+            {auctionTeams.map((team) => (
+              <article key={team.id} className="auction-team-card">
+                <div className="auction-team-head">
+                  <div className="auction-team-title-wrap">
+                    <div className="auction-team-name-text">{team.name}</div>
+                    {(team.captainName === '미참가' || team.id === auctionMyTeamId) && (
+                      <button
+                        type="button"
+                        className="tiny auction-captain-join-btn"
+                        disabled={!auctionRoomCode || auctionBusy || (team.id === auctionMyTeamId && (auctionRunning || auctionPaused))}
+                        onClick={() => {
+                          if (team.id === auctionMyTeamId) {
+                            leaveCaptainTeam()
+                            return
+                          }
+                          openCaptainJoinModal(team.id)
+                        }}
+                      >
+                        {team.id === auctionMyTeamId ? '팀 탈퇴' : '주장참가'}
+                      </button>
+                    )}
+                  </div>
+                  <strong className="auction-points-badge">포인트 {team.points}</strong>
+                </div>
+                <div className="auction-team-roster">
+                  {Array.from({ length: 5 }, (_, idx) => {
+                    const rosterPlayers = [team.captainPlayer, ...team.players].filter(Boolean)
+                    const player = rosterPlayers[idx]
+                    return (
+                      <div key={`${team.id}-slot-${idx}`} className="auction-roster-row">
+                        {player ? (
+                          <>
+                            <div className="auction-roster-main">
+                              <span className="auction-roster-name">{player.name}</span>
+                              {idx === 0 && <span className="auction-captain-badge">주장</span>}
+                              {player.tier && (
+                                <span className={`tier-pill ${getTierClass(player.tier)}`}>
+                                  {getTierLabel(player.tier, (player.name || '').length >= 10)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="auction-roster-pos">
+                              {player.positions.length > 0 ? player.positions.join(' / ') : '라인 미지정'}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="auction-slot-empty">{idx === 0 ? '주장 슬롯' : '빈 슬롯'}</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="auction-center-stage">
+            <div className="auction-center-main">
+              <div className="auction-current-player">
+              {isAuctionHost && isAuctionCenterUnlocked && (
+                <button
+                  type="button"
+                  className="auction-undo-btn"
+                  onClick={undoAuctionCurrent}
+                  disabled={auctionBusy || !auctionSessionToken || !auctionCanUndo}
+                >
+                  되돌리기
+                </button>
+              )}
+              {auctionCurrent ? (
+                <div className="auction-current-card">
+                  <div className={`auction-current-tier-icon ${getTierClass(auctionCurrent.tier || '')}`}>
+                    {getTierIcon(auctionCurrent.tier)}
+                  </div>
+                  <h3>{auctionCurrent.name}</h3>
+                  <p>{auctionCurrent.tier || '티어 미지정'}</p>
+                  <p>{auctionCurrent.positions.length > 0 ? auctionCurrent.positions.join(' / ') : '라인 미지정'}</p>
+                  <div className="auction-timer">{auctionTimeLeft}s</div>
+                </div>
+              ) : (
+                <div className="auction-current-card">
+                  {isAuctionFinished ? (
+                    <>
+                      <h3>경매 종료</h3>
+                      <p>모든 경매가 종료되었습니다.</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3>대기 중</h3>
+                      <p>경매 시작을 눌러 진행을 시작하세요.</p>
+                    </>
+                  )}
+                </div>
+              )}
+              </div>
+
+              <div className="auction-round-timer">
+                <div className="auction-round-timer-head">
+                  <strong>경매 시간 제한</strong>
+                  <span>{auctionRunning || auctionPaused ? `${auctionTimeLeft}s` : `${auctionSeconds}s`}</span>
+                </div>
+                <div className="auction-round-track">
+                  <div
+                    className="auction-round-fill"
+                    style={{
+                      width: auctionRunning || auctionPaused
+                        ? `${Math.max(0, Math.min(100, (auctionTimeLeft / auctionSeconds) * 100))}%`
+                        : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="auction-next-player">
+                <div className="auction-next-player-head">다음 경매 플레이어</div>
+                {auctionQueue.length === 0 ? (
+                  <div className="auction-empty">대기 명단 없음</div>
+                ) : (
+                  <div className="auction-next-player-main">
+                    <strong>{auctionQueue[0].name}</strong>
+                    <span>
+                      {auctionQueue[0].tier || '티어 미지정'} | {auctionQueue[0].positions.length > 0 ? auctionQueue[0].positions.join(' / ') : '라인 미지정'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="auction-single-bid">
+                <div className="auction-next-player-head">입찰</div>
+                <div className="auction-single-bid-row">
+                  <div className="auction-my-team-label">
+                    {myTeam ? `${myTeam.name} ${myTeam.captainName}` : '내 팀 미지정 (주장참가 필요)'}
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    value={auctionBidAmount}
+                    placeholder="입찰 P"
+                    onChange={(e) => setAuctionBidAmount(e.target.value)}
+                    disabled={!auctionRunning || !auctionSessionToken || !myTeam}
+                  />
+                  <button
+                    type="button"
+                    className="tiny"
+                    disabled={!auctionRunning || !myTeam || !auctionSessionToken}
+                    onClick={() => submitAuctionBid(auctionMyTeamId, auctionBidAmount)}
+                  >
+                    입찰 등록
+                  </button>
+                </div>
+              </div>
+
+              <div className="auction-log-panel">
+                <h4>경매 진행상황</h4>
+                <div className="auction-log-list">
+                  {auctionLogs.length === 0 ? (
+                    <div className="auction-empty">진행 로그 없음</div>
+                  ) : (
+                    auctionLogs.map((line, index) => (
+                      <div key={`auction-log-${index}`} className="auction-log-line">{line}</div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {!isAuctionCenterUnlocked && (
+                <div className="auction-main-mask">
+                  {isAuctionHost ? (
+                    <button
+                      type="button"
+                      className="auction-main-start-btn"
+                      onClick={drawAuctionPlayer}
+                      disabled={auctionBusy || auctionRunning || !auctionSessionToken}
+                    >
+                      경매 시작
+                    </button>
+                  ) : (
+                    <div className="auction-main-waiting-text">방장이 경매 시작을 누르면 진행됩니다.</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="auction-center-actions">
+              <button type="button" className="tiny auction-action-roster-btn" onClick={() => setIsAuctionRosterOpen(true)} disabled={!isAuctionHost}>
+                경매 명단 추가
+              </button>
+              <button
+                type="button"
+                className="tiny auction-pause-btn"
+                onClick={togglePauseAuctionRound}
+                disabled={!isAuctionHost || !auctionSessionToken || (!auctionRunning && !auctionPaused)}
+              >
+                {auctionPaused ? '재개' : '일시 정지'}
+              </button>
+              <button
+                type="button"
+                className="tiny auction-action-restart-btn"
+                onClick={restartAuctionRound}
+                disabled={!isAuctionHost || !auctionSessionToken || !isAuctionCenterUnlocked}
+              >
+                경매 재시작
+              </button>
+              <button
+                type="button"
+                className="tiny auction-action-finish-btn"
+                onClick={finishAuctionRound}
+                disabled={!isAuctionHost || !auctionRunning || !auctionSessionToken}
+              >
+                라운드 종료
+              </button>
+              <div className="auction-waiting-count">대기 선수 {auctionQueue.length}명</div>
+            </div>
+          </div>
+
+          <aside className="auction-order-panel">
+            <div className="auction-order-section">
+              <div className="auction-order-head">경매순서</div>
+              <div className="auction-order-grid">
+                {auctionQueue.length === 0 ? (
+                  <div className="auction-empty">대기 명단 없음</div>
+                ) : (
+                  auctionQueue.map((player) => (
+                    <div key={`queue-${player.id}`} className="auction-order-item">
+                      <strong>{player.name}</strong>
+                      <span>{player.tier || '미지정'}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="auction-order-section">
+              <div className="auction-order-head auction-order-head-sub">유찰/낙찰 선수</div>
+              <div className="auction-order-grid">
+                {auctionSoldPlayers.length === 0 ? (
+                  <div className="auction-empty">아직 낙찰 선수 없음</div>
+                ) : (
+                  auctionSoldPlayers.map((player) => (
+                    <div key={`sold-${player.id}`} className="auction-order-item sold">
+                      <strong>{player.name}</strong>
+                      <span>{player.tier || '미지정'}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        {isAuctionRosterOpen && isAuctionHost && (
+          <div className="modal-backdrop" onMouseDown={() => setIsAuctionRosterOpen(false)}>
+            <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <div className="help-modal-header">
+                <h3>경매 명단 입력</h3>
+                <button type="button" className="ghost" onClick={() => setIsAuctionRosterOpen(false)}>닫기</button>
+              </div>
+              <section className="modal-note">
+                <p>일반내전과 동일하게 복사/붙여넣기 후 `명단 추가`를 누르세요.</p>
+              </section>
+              <textarea
+                placeholder={'예) 닉네임#태그 / 티어 / 라인,라인'}
+                value={auctionInput}
+                onChange={(e) => setAuctionInput(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return
+                  if (event.shiftKey || event.nativeEvent.isComposing) return
+                  event.preventDefault()
+                  loadAuctionPlayersFromInput()
+                }}
+                rows={4}
+              />
+              <div className="input-actions">
+                <button type="button" onClick={loadAuctionPlayersFromInput} disabled={auctionBusy || !auctionSessionToken}>명단 추가</button>
+                <button type="button" className="ghost" onClick={() => setAuctionInput('')}>입력 비우기</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isCaptainJoinOpen && (
+          <div className="modal-backdrop" onMouseDown={() => setIsCaptainJoinOpen(false)}>
+            <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <div className="help-modal-header">
+                <h3>주장 참가</h3>
+                <button type="button" className="ghost" onClick={() => setIsCaptainJoinOpen(false)}>닫기</button>
+              </div>
+              <section className="modal-note">
+                <p>주장 닉네임을 입력하면 해당 팀 1번 슬롯(주장 슬롯)에 배치됩니다.</p>
+                <p>입력 예시: `닉네임#태그 / 티어 / 라인`</p>
+              </section>
+              <textarea
+                placeholder={'예) 닉네임#태그 / 티어 / 라인,라인'}
+                value={captainJoinDraft}
+                onChange={(e) => setCaptainJoinDraft(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return
+                  if (event.shiftKey || event.nativeEvent.isComposing) return
+                  event.preventDefault()
+                  joinCaptainToTeam()
+                }}
+                rows={3}
+              />
+              <div className="input-actions">
+                <button type="button" onClick={joinCaptainToTeam} disabled={auctionBusy}>주장참가 적용</button>
+                <button type="button" className="ghost" onClick={() => setCaptainJoinDraft('')}>입력 비우기</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isCaptainJoinBlockedOpen && (
+          <div className="modal-backdrop" onMouseDown={() => setIsCaptainJoinBlockedOpen(false)}>
+            <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <div className="help-modal-header">
+                <h3>안내</h3>
+                <button type="button" className="ghost" onClick={() => setIsCaptainJoinBlockedOpen(false)}>닫기</button>
+              </div>
+              <section className="modal-note">
+                <p>현재팀에 가입되어있습니다.</p>
+              </section>
+              <div className="input-actions">
+                <button type="button" onClick={() => setIsCaptainJoinBlockedOpen(false)}>확인</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
 
   return (
     <div className="app">
+      {topMessage.text && <div className={`top-message ${topMessage.type}`}>{topMessage.text}</div>}
       <div className="page-tools">
         <button type="button" className="ghost tiny" onClick={() => navigate(ROUTE.HOME)}>
           홈으로
@@ -919,8 +2019,8 @@ function App() {
       </DndContext>
 
       {isPoolModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsPoolModalOpen(false)}>
-          <div className="pool-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onMouseDown={() => setIsPoolModalOpen(false)}>
+          <div className="pool-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="pool-modal-header">
               <h3>팀 배정 팝업 (드래그 없이 버튼으로 배정)</h3>
               <button type="button" className="ghost" onClick={() => setIsPoolModalOpen(false)}>닫기</button>
@@ -931,7 +2031,7 @@ function App() {
               popupWaitingByTier.map((section) => (
                 <section key={section.tier} className="popup-tier-group">
                   <div className="popup-tier-title">
-                    <span className={`tier-pill ${getTierClass(section.tier)}`}>{section.tier}</span>
+                    <span className={`tier-pill ${getTierClass(section.tier)}`}>{getTierLabel(section.tier)}</span>
                     <strong>{section.players.length}명</strong>
                   </div>
                   <div className="popup-list">
@@ -956,44 +2056,44 @@ function App() {
       )}
 
       {isHelpModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsHelpModalOpen(false)}>
-          <div className="help-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onMouseDown={() => setIsHelpModalOpen(false)}>
+          <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="help-modal-header">
               <h3>사용방법</h3>
               <button type="button" className="ghost" onClick={() => setIsHelpModalOpen(false)}>닫기</button>
             </div>
 
-            <section className="help-block">
+            <section className="modal-note">
               <h4>1. 명단 입력</h4>
               <p>`닉네임#태그 / 티어 / 라인` 형식으로 입력하거나 채팅 내용을 그대로 붙여넣으세요.</p>
               <p>예시: `선수#KR1 / 다이아 / 탑 미드`</p>
             </section>
 
-            <section className="help-block">
+            <section className="modal-note">
               <h4>2. 팀 배정</h4>
               <p>대기 목록의 선수를 팀 A 또는 팀 B 컬럼으로 드래그해서 배정합니다.</p>
               <p>선수 카드 우측 상단 `삭제` 버튼으로 즉시 제거할 수 있습니다.</p>
             </section>
 
-            <section className="help-block">
+            <section className="modal-note">
               <h4>3. 빠른 조작</h4>
               <p>`Ctrl+클릭`(Mac은 `Cmd+클릭`)으로 다중 선택 후 한 번에 이동할 수 있습니다.</p>
               <p>가운데 `교체` 버튼으로 팀 A/B 전체를 서로 바꿀 수 있습니다.</p>
             </section>
 
-            <section className="help-block">
+            <section className="modal-note">
               <h4>4. 팝업 배정</h4>
               <p>대기 컬럼의 `팝업` 버튼을 누르면 티어별 목록이 열립니다.</p>
               <p>팝업에서 A/B 버튼으로 드래그 없이 바로 배정할 수 있습니다.</p>
             </section>
 
-            <section className="help-block">
+            <section className="modal-note">
               <h4>5. 캡처 복사</h4>
               <p>카메라 버튼을 누르면 팀 A/B 영역 이미지를 클립보드에 복사합니다.</p>
               <p>브라우저 권한 정책에 따라 복사가 제한될 수 있습니다.</p>
             </section>
 
-            <section className="help-block">
+            <section className="modal-note">
               <h4>6. 초기화 버튼 차이</h4>
               <p>`전체초기화`: 현재 등록된 모든 선수를 완전히 삭제합니다.</p>
               <p>`팀초기화`: 선수는 유지하고, 팀 A/B 인원만 모두 대기로 되돌립니다.</p>
@@ -1003,15 +2103,15 @@ function App() {
       )}
 
       {isUpdateModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsUpdateModalOpen(false)}>
-          <div className="help-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onMouseDown={() => setIsUpdateModalOpen(false)}>
+          <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="help-modal-header">
               <h3>업데이트 내역</h3>
               <button type="button" className="ghost" onClick={() => setIsUpdateModalOpen(false)}>닫기</button>
             </div>
 
             {CHANGELOG_ENTRIES.map((entry) => (
-              <section key={entry.date} className="help-block update-block">
+              <section key={entry.date} className="modal-note update-block">
                 <h4>{entry.date}</h4>
                 <ul className="update-list">
                   {entry.items.map((item, index) => (
