@@ -917,6 +917,17 @@
   background: rgba(148, 182, 214, 0.16);
 }
 
+.auction-tier-icon-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.auction-tier-icon-fallback {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
 .auction-current-player h3 {
   margin: 0;
 }
@@ -1164,8 +1175,40 @@
   color: #99c2e4;
 }
 
+.auction-order-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.auction-order-title span {
+  color: #cbe3f7;
+  font-weight: 700;
+}
+
+.auction-order-line {
+  color: #9fc4e2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auction-order-result {
+  color: #93ffc7;
+  font-weight: 700;
+}
+
 .auction-order-item.sold {
   border-color: rgba(87, 182, 138, 0.42);
+}
+
+.auction-order-item.unsold {
+  border-color: rgba(159, 131, 83, 0.4);
+}
+
+.auction-order-item.unsold .auction-order-result {
+  color: #ffd48a;
 }
 
 .input-section {

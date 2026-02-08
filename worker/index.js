@@ -106,6 +106,7 @@ function roomPublicState(room) {
     current: room.current,
     bids: room.bids,
     logs: room.logs,
+    resolvedHistory: Array.isArray(room.resolvedHistory) ? room.resolvedHistory : [],
     round: room.round,
     canUndo: Boolean(room.current || (Array.isArray(room.resolvedHistory) && room.resolvedHistory.length > 0)),
   };

@@ -303,20 +303,20 @@ function getTierLabel(tier, compact = false) {
   return compactMap[tier] ?? tier
 }
 
-function getTierIcon(tier) {
+function getTierIconUrl(tier) {
   const map = {
-    챌린저: '👑',
-    그랜드마스터: '🏆',
-    마스터: '💠',
-    다이아: '💎',
-    에메랄드: '🟢',
-    플래티넘: '🔷',
-    골드: '🥇',
-    실버: '🥈',
-    브론즈: '🥉',
-    아이언: '⚙️',
+    아이언: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599447',
+    브론즈: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599441',
+    실버: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599450',
+    골드: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599445',
+    플래티넘: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599449',
+    에메랄드: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599444',
+    다이아: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599443',
+    마스터: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599448',
+    그랜드마스터: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599446',
+    챌린저: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599442',
   }
-  return map[tier] ?? '🎯'
+  return map[tier] ?? ''
 }
 
 function isMetadataLine(line) {
@@ -602,6 +602,7 @@ function App() {
   const [auctionBidAmount, setAuctionBidAmount] = useState('')
   const [auctionBidMap, setAuctionBidMap] = useState({})
   const [auctionLogs, setAuctionLogs] = useState([])
+  const [auctionResolvedHistory, setAuctionResolvedHistory] = useState([])
   const [isAuctionCenterUnlocked, setIsAuctionCenterUnlocked] = useState(false)
   const [auctionCanUndo, setAuctionCanUndo] = useState(false)
   const [isRoomCodeCopied, setIsRoomCodeCopied] = useState(false)
@@ -706,6 +707,7 @@ function App() {
     setAuctionCurrent(nextState.current ?? null)
     setAuctionBidMap(nextState.bids ?? {})
     setAuctionLogs(Array.isArray(nextState.logs) ? nextState.logs : [])
+    setAuctionResolvedHistory(Array.isArray(nextState.resolvedHistory) ? nextState.resolvedHistory : [])
     const running = Boolean(nextState.round?.running)
     const paused = Boolean(nextState.round?.paused)
     const started = Boolean(nextState.round?.started)
@@ -1188,11 +1190,6 @@ function App() {
     }
   }, [players])
 
-  const auctionSoldPlayers = useMemo(
-    () => auctionTeams.flatMap((team) => team.players),
-    [auctionTeams],
-  )
-
   const addFromText = (text) => {
     const parsed = parsePlayers(text)
     if (parsed.length === 0) return
@@ -1619,7 +1616,15 @@ function App() {
               {auctionCurrent ? (
                 <div className="auction-current-card">
                   <div className={`auction-current-tier-icon ${getTierClass(auctionCurrent.tier || '')}`}>
-                    {getTierIcon(auctionCurrent.tier)}
+                    {getTierIconUrl(auctionCurrent.tier)
+                      ? (
+                        <img
+                          src={getTierIconUrl(auctionCurrent.tier)}
+                          alt={`${auctionCurrent.tier || '미지정'} 티어 아이콘`}
+                          className="auction-tier-icon-img"
+                        />
+                      )
+                      : <span className="auction-tier-icon-fallback">?</span>}
                   </div>
                   <h3>{auctionCurrent.name}</h3>
                   <p>{auctionCurrent.tier || '티어 미지정'}</p>
@@ -1771,8 +1776,13 @@ function App() {
                 ) : (
                   auctionQueue.map((player) => (
                     <div key={`queue-${player.id}`} className="auction-order-item">
-                      <strong>{player.name}</strong>
-                      <span>{player.tier || '미지정'}</span>
+                      <div className="auction-order-title">
+                        <strong>{player.name}</strong>
+                        <span>{player.tier ? getTierLabel(player.tier, true) : '미지정'}</span>
+                      </div>
+                      <span className="auction-order-line">
+                        {player.positions.length > 0 ? player.positions.join(' / ') : '라인 미지정'}
+                      </span>
                     </div>
                   ))
                 )}
@@ -1781,13 +1791,21 @@ function App() {
             <div className="auction-order-section">
               <div className="auction-order-head auction-order-head-sub">유찰/낙찰 선수</div>
               <div className="auction-order-grid">
-                {auctionSoldPlayers.length === 0 ? (
+                {auctionResolvedHistory.length === 0 ? (
                   <div className="auction-empty">아직 낙찰 선수 없음</div>
                 ) : (
-                  auctionSoldPlayers.map((player) => (
-                    <div key={`sold-${player.id}`} className="auction-order-item sold">
-                      <strong>{player.name}</strong>
-                      <span>{player.tier || '미지정'}</span>
+                  [...auctionResolvedHistory].reverse().map((entry, index) => (
+                    <div key={`resolved-${entry.player?.id || index}-${index}`} className={`auction-order-item ${entry.type === 'sold' ? 'sold' : 'unsold'}`}>
+                      <div className="auction-order-title">
+                        <strong>{entry.player?.name || '-'}</strong>
+                        <span>{entry.player?.tier ? getTierLabel(entry.player.tier, true) : '미지정'}</span>
+                      </div>
+                      <span className="auction-order-line">
+                        {entry.player?.positions?.length > 0 ? entry.player.positions.join(' / ') : '라인 미지정'}
+                      </span>
+                      <span className="auction-order-result">
+                        {entry.type === 'sold' ? `낙찰${entry.amount ? ` ${entry.amount}P` : ''}` : '유찰'}
+                      </span>
                     </div>
                   ))
                 )}
