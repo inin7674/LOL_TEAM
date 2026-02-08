@@ -6,6 +6,11 @@
   gap: 1.4rem;
 }
 
+.app:not(.auction-page) {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
 .top-message {
   position: fixed;
   top: 0.9rem;
