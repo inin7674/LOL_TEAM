@@ -1104,6 +1104,41 @@
 .auction-log-line {
   font-size: 0.8rem;
   color: #d9ebff;
+  border-left: 3px solid transparent;
+  padding-left: 0.4rem;
+}
+
+.auction-log-line.team-a {
+  border-left-color: #5fb8ff;
+}
+
+.auction-log-line.team-b {
+  border-left-color: #ff88bf;
+}
+
+.auction-log-line.team-c {
+  border-left-color: #7ef0b7;
+}
+
+.auction-log-line.team-d {
+  border-left-color: #ffd17d;
+}
+
+.auction-log-line.points {
+  color: #ffefb3;
+  font-weight: 700;
+}
+
+.auction-log-line.sold {
+  color: #9dffd2;
+}
+
+.auction-log-line.unsold {
+  color: #ffd6a6;
+}
+
+.auction-log-line.auto-next {
+  color: #a4d7ff;
 }
 
 .auction-empty {

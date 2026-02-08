@@ -376,7 +376,27 @@ export class AuctionRoomDO {
     this.room.round.endsAt = 0;
     this.room.round.remainingMs = 0;
     this.room.round.started = true;
+
+    // Auto-continue: if queue still has players, immediately start next random round.
+    if (this.room.queue.length > 0) {
+      const idx = Math.floor(Math.random() * this.room.queue.length);
+      const next = this.room.queue[idx];
+      this.room.queue.splice(idx, 1);
+      this.room.current = next;
+      this.room.bids = {};
+      this.room.round.running = true;
+      this.room.round.paused = false;
+      this.room.round.endsAt = Date.now() + this.room.config.seconds * 1000;
+      this.room.round.remainingMs = 0;
+      this.room.round.started = true;
+      this.room.logs.unshift(`${next.name} 자동 경매 시작 (${this.room.config.seconds}초)`);
+      this.room.logs = this.room.logs.slice(0, 120);
+    }
+
     await this.persist();
+    if (this.room.round.running) {
+      await this.state.storage.setAlarm(this.room.round.endsAt);
+    }
     await this.broadcast();
     return json({ ok: true, state: roomPublicState(this.room) });
   }

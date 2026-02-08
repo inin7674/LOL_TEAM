@@ -439,6 +439,20 @@ function parseCaptainDraft(rawText) {
   }
 }
 
+function getAuctionLogClass(line) {
+  const text = String(line || '')
+  const classes = ['auction-log-line']
+  if (/팀 A/.test(text)) classes.push('team-a')
+  if (/팀 B/.test(text)) classes.push('team-b')
+  if (/팀 C/.test(text)) classes.push('team-c')
+  if (/팀 D/.test(text)) classes.push('team-d')
+  if (/낙찰/.test(text)) classes.push('sold')
+  if (/유찰/.test(text)) classes.push('unsold')
+  if (/\d+P/.test(text)) classes.push('points')
+  if (/자동 경매 시작/.test(text)) classes.push('auto-next')
+  return classes.join(' ')
+}
+
 function DraggablePlayer({ player, onAssign, onRemove, selected, onToggleSelect, ghosted }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: player.id,
@@ -1711,7 +1725,7 @@ function App() {
                     <div className="auction-empty">진행 로그 없음</div>
                   ) : (
                     auctionLogs.map((line, index) => (
-                      <div key={`auction-log-${index}`} className="auction-log-line">{line}</div>
+                      <div key={`auction-log-${index}`} className={getAuctionLogClass(line)}>{line}</div>
                     ))
                   )}
                 </div>
