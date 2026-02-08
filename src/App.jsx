@@ -1794,7 +1794,7 @@ function App() {
                         <strong>{player.name}</strong>
                         {player.tier ? (
                           <span className={`tier-pill auction-order-tier ${getTierClass(player.tier)}`}>
-                            {getTierLabel(player.tier, (player.name || '').length >= 10)}
+                            {getTierLabel(player.tier)}
                           </span>
                         ) : (
                           <span className="auction-order-tier-empty">미지정</span>
@@ -1820,7 +1820,7 @@ function App() {
                         <strong>{entry.player?.name || '-'}</strong>
                         {entry.player?.tier ? (
                           <span className={`tier-pill auction-order-tier ${getTierClass(entry.player.tier)}`}>
-                            {getTierLabel(entry.player.tier, (entry.player?.name || '').length >= 10)}
+                            {getTierLabel(entry.player.tier)}
                           </span>
                         ) : (
                           <span className="auction-order-tier-empty">미지정</span>
