@@ -815,7 +815,14 @@ function App() {
       setIsAuctionJoinOpen(false)
       navigate(ROUTE.AUCTION)
     } catch (error) {
-      setAuctionError(error.message || '경매 방 입장에 실패했습니다.')
+      const message = String(error?.message || '')
+      const missingRoom =
+        !asHost && (
+          message.includes('room not initialized')
+          || message.includes('invalid room code')
+          || message.includes('요청 실패 (404)')
+        )
+      setAuctionError(missingRoom ? '해당하는 방이 없습니다.' : (error.message || '경매 방 입장에 실패했습니다.'))
     } finally {
       setAuctionBusy(false)
     }
