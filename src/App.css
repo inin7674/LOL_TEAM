@@ -1856,6 +1856,20 @@ button.danger {
   margin-bottom: 0.55rem;
 }
 
+.popup-tier-group h4 {
+  margin: 0 0 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.popup-tier-group h4 small {
+  margin-left: 0.05rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .popup-tier-title {
   display: flex;
   justify-content: space-between;
