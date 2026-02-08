@@ -305,16 +305,16 @@ function getTierLabel(tier, compact = false) {
 
 function getTierIconUrl(tier) {
   const map = {
-    아이언: 'https://opgg-static.akamaized.net/images/medals_new/iron.png',
-    브론즈: 'https://opgg-static.akamaized.net/images/medals_new/bronze.png',
-    실버: 'https://opgg-static.akamaized.net/images/medals_new/silver.png',
-    골드: 'https://opgg-static.akamaized.net/images/medals_new/gold.png',
-    플래티넘: 'https://opgg-static.akamaized.net/images/medals_new/platinum.png',
-    에메랄드: 'https://opgg-static.akamaized.net/images/medals_new/emerald.png',
-    다이아: 'https://opgg-static.akamaized.net/images/medals_new/diamond.png',
-    마스터: 'https://opgg-static.akamaized.net/images/medals_new/master.png',
-    그랜드마스터: 'https://opgg-static.akamaized.net/images/medals_new/grandmaster.png',
-    챌린저: 'https://opgg-static.akamaized.net/images/medals_new/challenger.png',
+    아이언: '/tier-icons/iron.png',
+    브론즈: '/tier-icons/bronze.png',
+    실버: '/tier-icons/silver.png',
+    골드: '/tier-icons/gold.png',
+    플래티넘: '/tier-icons/platinum.png',
+    에메랄드: '/tier-icons/emerald.png',
+    다이아: '/tier-icons/diamond.png',
+    마스터: '/tier-icons/master.png',
+    그랜드마스터: '/tier-icons/grandmaster.png',
+    챌린저: '/tier-icons/challenger.png',
   }
   return map[tier] ?? ''
 }
