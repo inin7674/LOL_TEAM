@@ -1911,7 +1911,7 @@ button.danger {
   }
 }
 
-@media (max-width: 720px) {
+@media (width <= 720px) {
   .auction-page {
     width: calc(100% + 1.7rem);
     margin-left: -0.85rem;
