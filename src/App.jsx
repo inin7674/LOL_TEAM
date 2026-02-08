@@ -1,12 +1,48 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core'
 import './App.css'
+
+const ROUTE = {
+  HOME: '/',
+  NORMAL: '/normal',
+}
+
+function normalizeRoute(pathname) {
+  if (pathname === ROUTE.NORMAL) return ROUTE.NORMAL
+  return ROUTE.HOME
+}
 
 const TEAM = {
   POOL: 'pool',
   A: 'teamA',
   B: 'teamB',
 }
+
+const CHANGELOG_ENTRIES = [
+  {
+    date: '2026-02-08',
+    items: [
+      '홈 화면과 일반내전 화면을 분리해 이동이 더 쉬워졌어요.',
+      '팀 A/B 사이에 교체 버튼과 카메라 버튼이 추가됐어요.',
+      '카메라 버튼으로 팀 A/B 화면을 바로 복사할 수 있어요.',
+    ],
+  },
+  {
+    date: '2026-02-07',
+    items: [
+      '사용방법 팝업이 추가되어 처음 써도 쉽게 따라갈 수 있어요.',
+      '전체초기화와 팀초기화 차이를 한눈에 볼 수 있어요.',
+      '모바일에서도 주요 버튼을 더 쉽게 찾을 수 있어요.',
+    ],
+  },
+  {
+    date: '2026-02-06',
+    items: [
+      '팝업에서 티어별로 확인하고 바로 팀 배정할 수 있어요.',
+      '여러 명을 선택해서 한 번에 이동하는 기능이 더 안정적이에요.',
+    ],
+  },
+]
 
 const TIER_ORDER = [
   '챌린저',
@@ -414,6 +450,27 @@ function App() {
   const [draggingIds, setDraggingIds] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
   const [isPoolModalOpen, setIsPoolModalOpen] = useState(false)
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false)
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
+  const [route, setRoute] = useState(() => normalizeRoute(window.location.pathname))
+  const [isCapturing, setIsCapturing] = useState(false)
+  const teamAColumnRef = useRef(null)
+  const teamBColumnRef = useRef(null)
+
+  useEffect(() => {
+    const onPopState = () => {
+      setRoute(normalizeRoute(window.location.pathname))
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  const navigate = (nextRoute) => {
+    const target = normalizeRoute(nextRoute)
+    if (target === route) return
+    window.history.pushState({}, '', target)
+    setRoute(target)
+  }
 
   const grouped = useMemo(() => {
     return {
@@ -491,6 +548,96 @@ function App() {
     setSelectedIds([])
   }
 
+  const swapTeamsBetweenAAndB = () => {
+    setPlayers((prev) => prev.map((p) => {
+      if (p.team === TEAM.A) return { ...p, team: TEAM.B }
+      if (p.team === TEAM.B) return { ...p, team: TEAM.A }
+      return p
+    }))
+    setSelectedIds([])
+  }
+
+  const captureBoard = async () => {
+    if (isCapturing) return
+
+    const teamAEl = teamAColumnRef.current
+    const teamBEl = teamBColumnRef.current
+    if (!teamAEl || !teamBEl) return
+
+    const loadHtml2Canvas = () => new Promise((resolve, reject) => {
+      if (window.html2canvas) {
+        resolve(window.html2canvas)
+        return
+      }
+
+      const scriptId = 'html2canvas-cdn-loader'
+      const existing = document.getElementById(scriptId)
+      if (existing) {
+        existing.addEventListener('load', () => resolve(window.html2canvas), { once: true })
+        existing.addEventListener('error', () => reject(new Error('html2canvas load error')), { once: true })
+        return
+      }
+
+      const script = document.createElement('script')
+      script.id = scriptId
+      script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'
+      script.async = true
+      script.onload = () => resolve(window.html2canvas)
+      script.onerror = () => reject(new Error('html2canvas load error'))
+      document.head.appendChild(script)
+    })
+
+    setIsCapturing(true)
+    try {
+      const html2canvas = await loadHtml2Canvas()
+      if (!html2canvas) throw new Error('html2canvas unavailable')
+
+      const captureOptions = {
+        backgroundColor: '#0a1a2b',
+        scale: Math.max(1, window.devicePixelRatio || 1),
+        useCORS: true,
+        logging: false,
+      }
+      const canvasA = await html2canvas(teamAEl, captureOptions)
+      const canvasB = await html2canvas(teamBEl, captureOptions)
+
+      const gap = 16
+      const outWidth = canvasA.width + gap + canvasB.width
+      const outHeight = Math.max(canvasA.height, canvasB.height)
+
+      const canvas = document.createElement('canvas')
+      canvas.width = outWidth
+      canvas.height = outHeight
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#0a1a2b'
+      ctx.fillRect(0, 0, outWidth, outHeight)
+      ctx.drawImage(canvasA, 0, 0)
+      ctx.drawImage(canvasB, canvasA.width + gap, 0)
+      ctx.fillStyle = '#1f5587'
+      ctx.fillRect(canvasA.width + Math.floor(gap / 2), 0, 1, outHeight)
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+      if (!blob) throw new Error('캡처 이미지 생성에 실패했습니다.')
+
+      const canCopy = typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write
+      if (canCopy) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+          window.alert('팀 A/B 보드를 클립보드에 복사했습니다.')
+          return
+        } catch {
+          window.alert('이미지 복사에 실패했습니다. 브라우저 권한 설정을 확인해주세요.')
+          return
+        }
+      }
+      window.alert('이 브라우저는 이미지 클립보드 복사를 지원하지 않습니다.')
+    } catch (error) {
+      window.alert('캡처를 완료하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.')
+    } finally {
+      setIsCapturing(false)
+    }
+  }
+
   const toggleSelect = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]))
   }
@@ -551,10 +698,71 @@ function App() {
     return sections
   }, [grouped])
 
+  const renderAnimatedChars = (text, classPrefix) => (
+    text.split('').map((ch, index) => (
+      <span
+        key={`${classPrefix}-${ch}-${index}`}
+        className={`${classPrefix}-char${ch === ' ' ? ` ${classPrefix}-space` : ''}`}
+        style={{ '--char-index': index }}
+      >
+        {ch === ' ' ? '\u00A0' : ch}
+      </span>
+    ))
+  )
+
+  if (route === ROUTE.HOME) {
+    return (
+      <div className="home-screen">
+        <div className="home-title-split" aria-label="LoL Team Builder">
+          <span className="home-diagonal" aria-hidden="true" />
+          <div className="home-lol-layer">
+            <span className="home-title-lol">{renderAnimatedChars('LoL TEAM', 'lol')}</span>
+          </div>
+          <div className="home-builder-layer">
+            <span className="home-title-builder">{renderAnimatedChars('BUILDER', 'builder')}</span>
+          </div>
+        </div>
+        <p className="home-subtitle">내전 팀 구성을 빠르게 시작하세요.</p>
+        <div className="home-actions">
+          <button type="button" className="home-start" onClick={() => navigate(ROUTE.NORMAL)}>
+            일반내전
+          </button>
+          <button type="button" className="home-start disabled" disabled>
+            경매내전 (준비중)
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
+      <div className="page-tools">
+        <button type="button" className="ghost tiny" onClick={() => navigate(ROUTE.HOME)}>
+          홈으로
+        </button>
+        <button type="button" className="tiny team-swap-top" onClick={swapTeamsBetweenAAndB}>
+          팀 A/B 서로 교체
+        </button>
+        <button type="button" className="tiny team-camera-top" onClick={captureBoard} disabled={isCapturing}>
+          <span className="material-symbols-outlined" aria-hidden="true">
+            {isCapturing ? 'hourglass_top' : 'photo_camera'}
+          </span>
+          <span>{isCapturing ? '캡처 중...' : '보드 캡처'}</span>
+        </button>
+      </div>
       <header className="header">
-        <div className="header-badge">Custom Match Organizer</div>
+        <div className="header-top">
+          <div className="header-badge">Custom Match Organizer</div>
+          <div className="header-actions">
+            <button type="button" className="ghost help-open-btn" onClick={() => setIsHelpModalOpen(true)}>
+              사용방법
+            </button>
+            <button type="button" className="ghost update-open-btn" onClick={() => setIsUpdateModalOpen(true)}>
+              업데이트 내역
+            </button>
+          </div>
+        </div>
         <h1>LoL 내전 팀 빌더</h1>
         <p>명단 붙여넣기부터 드래그 배치까지, 한 화면에서 빠르게 진행하세요.</p>
       </header>
@@ -590,11 +798,7 @@ function App() {
       </section>
 
       <DndContext autoScroll={false} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-        <div className="guide">
-          <span>Tip</span>
-          플레이어 드래그, Ctrl+클릭 선택 및 다중선택, 팝업에서 티어별 일괄 확인이 가능합니다.
-        </div>
-        <div className="columns">
+        <div className="columns columns-with-swap">
           <DropColumn
             id={TEAM.POOL}
             title="대기"
@@ -615,34 +819,61 @@ function App() {
               />
             ))}
           </DropColumn>
-          <DropColumn id={TEAM.A} title="팀 A" count={grouped[TEAM.A].length}>
-            {grouped[TEAM.A].length === 0 && <div className="empty">팀 A 인원이 없습니다.</div>}
-            {grouped[TEAM.A].map((player) => (
-              <DraggablePlayer
-                key={player.id}
-                player={player}
-                onAssign={assignPlayer}
-                onRemove={removePlayer}
-                selected={selectedIds.includes(player.id)}
-                onToggleSelect={toggleSelect}
-                ghosted={activeId !== null && draggingIds.includes(player.id)}
-              />
-            ))}
-          </DropColumn>
-          <DropColumn id={TEAM.B} title="팀 B" count={grouped[TEAM.B].length}>
-            {grouped[TEAM.B].length === 0 && <div className="empty">팀 B 인원이 없습니다.</div>}
-            {grouped[TEAM.B].map((player) => (
-              <DraggablePlayer
-                key={player.id}
-                player={player}
-                onAssign={assignPlayer}
-                onRemove={removePlayer}
-                selected={selectedIds.includes(player.id)}
-                onToggleSelect={toggleSelect}
-                ghosted={activeId !== null && draggingIds.includes(player.id)}
-              />
-            ))}
-          </DropColumn>
+          <div ref={teamAColumnRef} className="team-capture-slot">
+            <DropColumn id={TEAM.A} title="팀 A" count={grouped[TEAM.A].length}>
+              {grouped[TEAM.A].length === 0 && <div className="empty">팀 A 인원이 없습니다.</div>}
+              {grouped[TEAM.A].map((player) => (
+                <DraggablePlayer
+                  key={player.id}
+                  player={player}
+                  onAssign={assignPlayer}
+                  onRemove={removePlayer}
+                  selected={selectedIds.includes(player.id)}
+                  onToggleSelect={toggleSelect}
+                  ghosted={activeId !== null && draggingIds.includes(player.id)}
+                />
+              ))}
+            </DropColumn>
+          </div>
+          <div className="team-swap-between">
+            <button
+              type="button"
+              className="team-swap-icon"
+              onClick={swapTeamsBetweenAAndB}
+              aria-label="팀 A와 팀 B 교체"
+              title="팀 A와 팀 B 교체"
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">swap_horiz</span>
+            </button>
+            <button
+              type="button"
+              className="team-camera-icon"
+              onClick={captureBoard}
+              aria-label="팀 보드 캡처"
+              title="팀 보드 캡처"
+              disabled={isCapturing}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">
+                {isCapturing ? 'hourglass_top' : 'photo_camera'}
+              </span>
+            </button>
+          </div>
+          <div ref={teamBColumnRef} className="team-capture-slot">
+            <DropColumn id={TEAM.B} title="팀 B" count={grouped[TEAM.B].length}>
+              {grouped[TEAM.B].length === 0 && <div className="empty">팀 B 인원이 없습니다.</div>}
+              {grouped[TEAM.B].map((player) => (
+                <DraggablePlayer
+                  key={player.id}
+                  player={player}
+                  onAssign={assignPlayer}
+                  onRemove={removePlayer}
+                  selected={selectedIds.includes(player.id)}
+                  onToggleSelect={toggleSelect}
+                  ghosted={activeId !== null && draggingIds.includes(player.id)}
+                />
+              ))}
+            </DropColumn>
+          </div>
         </div>
         <DragOverlay>
           <PlayerPreview
@@ -685,6 +916,75 @@ function App() {
                 </section>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {isHelpModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsHelpModalOpen(false)}>
+          <div className="help-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="help-modal-header">
+              <h3>사용방법</h3>
+              <button type="button" className="ghost" onClick={() => setIsHelpModalOpen(false)}>닫기</button>
+            </div>
+
+            <section className="help-block">
+              <h4>1. 명단 입력</h4>
+              <p>`닉네임#태그 / 티어 / 라인` 형식으로 입력하거나 채팅 내용을 그대로 붙여넣으세요.</p>
+              <p>예시: `선수#KR1 / 다이아 / 탑 미드`</p>
+            </section>
+
+            <section className="help-block">
+              <h4>2. 팀 배정</h4>
+              <p>대기 목록의 선수를 팀 A 또는 팀 B 컬럼으로 드래그해서 배정합니다.</p>
+              <p>선수 카드 우측 상단 `삭제` 버튼으로 즉시 제거할 수 있습니다.</p>
+            </section>
+
+            <section className="help-block">
+              <h4>3. 빠른 조작</h4>
+              <p>`Ctrl+클릭`(Mac은 `Cmd+클릭`)으로 다중 선택 후 한 번에 이동할 수 있습니다.</p>
+              <p>가운데 `교체` 버튼으로 팀 A/B 전체를 서로 바꿀 수 있습니다.</p>
+            </section>
+
+            <section className="help-block">
+              <h4>4. 팝업 배정</h4>
+              <p>대기 컬럼의 `팝업` 버튼을 누르면 티어별 목록이 열립니다.</p>
+              <p>팝업에서 A/B 버튼으로 드래그 없이 바로 배정할 수 있습니다.</p>
+            </section>
+
+            <section className="help-block">
+              <h4>5. 캡처 복사</h4>
+              <p>카메라 버튼을 누르면 팀 A/B 영역 이미지를 클립보드에 복사합니다.</p>
+              <p>브라우저 권한 정책에 따라 복사가 제한될 수 있습니다.</p>
+            </section>
+
+            <section className="help-block">
+              <h4>6. 초기화 버튼 차이</h4>
+              <p>`전체초기화`: 현재 등록된 모든 선수를 완전히 삭제합니다.</p>
+              <p>`팀초기화`: 선수는 유지하고, 팀 A/B 인원만 모두 대기로 되돌립니다.</p>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {isUpdateModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsUpdateModalOpen(false)}>
+          <div className="help-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="help-modal-header">
+              <h3>업데이트 내역</h3>
+              <button type="button" className="ghost" onClick={() => setIsUpdateModalOpen(false)}>닫기</button>
+            </div>
+
+            {CHANGELOG_ENTRIES.map((entry) => (
+              <section key={entry.date} className="help-block update-block">
+                <h4>{entry.date}</h4>
+                <ul className="update-list">
+                  {entry.items.map((item, index) => (
+                    <li key={`${entry.date}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            ))}
           </div>
         </div>
       )}
