@@ -344,6 +344,7 @@ export class AuctionRoomDO {
     const body = (await readJson(request)) || {};
     const amount = Number.parseInt(body.amount, 10);
     if (!Number.isFinite(amount) || amount <= 0) return json({ error: "invalid amount" }, 400);
+    if (amount % 10 !== 0) return json({ error: "입찰 금액은 10단위로 입력해주세요." }, 400);
     const team = this.room.teams.find((entry) => entry.id === captain.teamId);
     if (!team) return json({ error: "invalid captain team" }, 400);
     if (amount > team.points) return json({ error: "not enough points" }, 400);

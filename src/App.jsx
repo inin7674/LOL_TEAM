@@ -968,8 +968,12 @@ function App() {
 
   const submitAuctionBid = async (teamId, amountText) => {
     if (!auctionRoomCode || !auctionSessionToken || !teamId) return
-    const amount = Number.parseInt(amountText, 10)
+    const amount = Number.parseInt(String(amountText).replace(/[^\d]/g, ''), 10)
     if (!Number.isFinite(amount) || amount <= 0) return
+    if (amount % 10 !== 0) {
+      setAuctionError('입찰 금액은 10단위로 입력해주세요.')
+      return
+    }
     setAuctionError('')
     try {
       const response = await auctionRequest(
@@ -1772,10 +1776,18 @@ function App() {
                   </div>
                   <input
                     type="number"
-                    min={1}
+                    min={10}
+                    step={10}
+                    inputMode="numeric"
                     value={auctionBidAmount}
-                    placeholder="입찰 P"
+                    placeholder="10단위 입찰 P"
                     onChange={(e) => setAuctionBidAmount(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+                        e.preventDefault()
+                        submitAuctionBid(auctionMyTeamId, auctionBidAmount)
+                      }
+                    }}
                     disabled={!auctionRunning || !auctionSessionToken || !myTeam}
                   />
                   <button
