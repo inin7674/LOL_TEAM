@@ -305,16 +305,16 @@ function getTierLabel(tier, compact = false) {
 
 function getTierIconUrl(tier) {
   const map = {
-    아이언: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599447',
-    브론즈: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599441',
-    실버: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599450',
-    골드: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599445',
-    플래티넘: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599449',
-    에메랄드: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599444',
-    다이아: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599443',
-    마스터: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599448',
-    그랜드마스터: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599446',
-    챌린저: 'https://wiki.leagueoflegends.com/en-us/index.php?curid=1599442',
+    아이언: 'https://opgg-static.akamaized.net/images/medals_new/iron.png',
+    브론즈: 'https://opgg-static.akamaized.net/images/medals_new/bronze.png',
+    실버: 'https://opgg-static.akamaized.net/images/medals_new/silver.png',
+    골드: 'https://opgg-static.akamaized.net/images/medals_new/gold.png',
+    플래티넘: 'https://opgg-static.akamaized.net/images/medals_new/platinum.png',
+    에메랄드: 'https://opgg-static.akamaized.net/images/medals_new/emerald.png',
+    다이아: 'https://opgg-static.akamaized.net/images/medals_new/diamond.png',
+    마스터: 'https://opgg-static.akamaized.net/images/medals_new/master.png',
+    그랜드마스터: 'https://opgg-static.akamaized.net/images/medals_new/grandmaster.png',
+    챌린저: 'https://opgg-static.akamaized.net/images/medals_new/challenger.png',
   }
   return map[tier] ?? ''
 }
@@ -1641,7 +1641,6 @@ function App() {
                       : <span className="auction-tier-icon-fallback">?</span>}
                   </div>
                   <h3>{auctionCurrent.name}</h3>
-                  <p>{auctionCurrent.tier || '티어 미지정'}</p>
                   <p>{auctionCurrent.positions.length > 0 ? auctionCurrent.positions.join(' / ') : '라인 미지정'}</p>
                   <div className="auction-timer">{auctionTimeLeft}s</div>
                 </div>
@@ -1794,7 +1793,7 @@ function App() {
                         <strong>{player.name}</strong>
                         {player.tier ? (
                           <span className={`tier-pill auction-order-tier ${getTierClass(player.tier)}`}>
-                            {getTierLabel(player.tier)}
+                            {player.tier}
                           </span>
                         ) : (
                           <span className="auction-order-tier-empty">미지정</span>
@@ -1820,7 +1819,7 @@ function App() {
                         <strong>{entry.player?.name || '-'}</strong>
                         {entry.player?.tier ? (
                           <span className={`tier-pill auction-order-tier ${getTierClass(entry.player.tier)}`}>
-                            {getTierLabel(entry.player.tier)}
+                            {entry.player.tier}
                           </span>
                         ) : (
                           <span className="auction-order-tier-empty">미지정</span>
