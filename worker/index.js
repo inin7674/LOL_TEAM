@@ -452,24 +452,37 @@ export class AuctionRoomDO {
     if (!this.room) return json({ error: "room not initialized" }, 404);
     if (!this.requireHost(request)) return json({ error: "host only" }, 403);
 
-    if (this.room.current) this.room.queue.push(this.room.current);
+    const queueByName = new Map();
+    const addToQueue = (player) => {
+      if (!player || !player.name) return;
+      queueByName.set(normalizeName(player.name), player);
+    };
+
+    for (const queued of this.room.queue) addToQueue(queued);
+    if (this.room.current) addToQueue(this.room.current);
+    for (const team of this.room.teams) {
+      const captainNames = new Set(
+        [team.captainName, team.captainPlayer?.name].map((name) => normalizeName(name)).filter(Boolean),
+      );
+      for (const player of team.players) {
+        const key = normalizeName(player?.name);
+        if (!key || captainNames.has(key)) continue;
+        addToQueue(player);
+      }
+      team.players = [];
+      team.points = INITIAL_POINTS;
+    }
+
+    this.room.queue = Array.from(queueByName.values());
     this.room.current = null;
     this.room.bids = {};
     this.room.round.running = false;
     this.room.round.paused = false;
     this.room.round.endsAt = 0;
     this.room.round.remainingMs = 0;
-    this.room.round.started = true;
+    this.room.round.started = false;
     this.room.resolvedHistory = [];
-
-    // Fisher-Yates shuffle
-    for (let i = this.room.queue.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = this.room.queue[i];
-      this.room.queue[i] = this.room.queue[j];
-      this.room.queue[j] = tmp;
-    }
-    this.room.logs.unshift("경매 재시작 - 순서 재랜덤");
+    this.room.logs.unshift(`경매 재시작 - 주장 제외 전체 초기화 (${this.room.queue.length}명)`);
     this.room.logs = this.room.logs.slice(0, 120);
     await this.persist();
     await this.broadcast();

@@ -1754,7 +1754,7 @@ function App() {
               </button>
               <button
                 type="button"
-                className="tiny auction-pause-btn"
+                className={`tiny auction-pause-btn ${auctionPaused ? 'is-paused' : ''}`}
                 onClick={togglePauseAuctionRound}
                 disabled={!isAuctionHost || !auctionSessionToken || (!auctionRunning && !auctionPaused)}
               >

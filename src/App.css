@@ -593,6 +593,17 @@
   border-color: #c24753;
 }
 
+.auction-pause-btn.is-paused {
+  background: #1f7c4a;
+  border-color: #2da866;
+  color: #e9fff2;
+}
+
+.auction-pause-btn.is-paused:hover {
+  background: #249157;
+  border-color: #37bf74;
+}
+
 .auction-action-roster-btn {
   background: #1f5a8a;
   border-color: #2f78b4;
