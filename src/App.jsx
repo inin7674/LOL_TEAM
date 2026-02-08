@@ -7,6 +7,9 @@ const ROUTE = {
   NORMAL: '/normal',
 }
 
+const STORAGE_KEY_PLAYERS = 'lol-team:players:v1'
+const STORAGE_KEY_DRAFT = 'lol-team:draft:v1'
+
 function normalizeRoute(pathname) {
   if (pathname === ROUTE.NORMAL) return ROUTE.NORMAL
   return ROUTE.HOME
@@ -25,6 +28,7 @@ const CHANGELOG_ENTRIES = [
       '홈 화면과 일반내전 화면을 분리해 이동이 더 쉬워졌어요.',
       '팀 A/B 사이에 교체 버튼과 카메라 버튼이 추가됐어요.',
       '카메라 버튼으로 팀 A/B 화면을 바로 복사할 수 있어요.',
+      '새로고침해도 입력한 명단과 배정 상태가 유지돼요.',
     ],
   },
   {
@@ -444,8 +448,23 @@ function DropColumn({ id, title, count, onOpenPopup, onResetTeams, children }) {
 }
 
 function App() {
-  const [players, setPlayers] = useState([])
-  const [input, setInput] = useState('')
+  const [players, setPlayers] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY_PLAYERS)
+      if (!raw) return []
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  })
+  const [input, setInput] = useState(() => {
+    try {
+      return window.localStorage.getItem(STORAGE_KEY_DRAFT) ?? ''
+    } catch {
+      return ''
+    }
+  })
   const [activeId, setActiveId] = useState(null)
   const [draggingIds, setDraggingIds] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
@@ -464,6 +483,22 @@ function App() {
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY_PLAYERS, JSON.stringify(players))
+    } catch {
+      // Ignore storage errors (private mode/quota) and keep app usable.
+    }
+  }, [players])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY_DRAFT, input)
+    } catch {
+      // Ignore storage errors (private mode/quota) and keep app usable.
+    }
+  }, [input])
 
   const navigate = (nextRoute) => {
     const target = normalizeRoute(nextRoute)
