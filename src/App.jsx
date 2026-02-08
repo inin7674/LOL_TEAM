@@ -1792,7 +1792,13 @@ function App() {
                     <div key={`queue-${player.id}`} className="auction-order-item">
                       <div className="auction-order-title">
                         <strong>{player.name}</strong>
-                        <span>{player.tier ? getTierLabel(player.tier, true) : '미지정'}</span>
+                        {player.tier ? (
+                          <span className={`tier-pill auction-order-tier ${getTierClass(player.tier)}`}>
+                            {getTierLabel(player.tier, (player.name || '').length >= 10)}
+                          </span>
+                        ) : (
+                          <span className="auction-order-tier-empty">미지정</span>
+                        )}
                       </div>
                       <span className="auction-order-line">
                         {player.positions.length > 0 ? player.positions.join(' / ') : '라인 미지정'}
@@ -1812,7 +1818,13 @@ function App() {
                     <div key={`resolved-${entry.player?.id || index}-${index}`} className={`auction-order-item ${entry.type === 'sold' ? 'sold' : 'unsold'}`}>
                       <div className="auction-order-title">
                         <strong>{entry.player?.name || '-'}</strong>
-                        <span>{entry.player?.tier ? getTierLabel(entry.player.tier, true) : '미지정'}</span>
+                        {entry.player?.tier ? (
+                          <span className={`tier-pill auction-order-tier ${getTierClass(entry.player.tier)}`}>
+                            {getTierLabel(entry.player.tier, (entry.player?.name || '').length >= 10)}
+                          </span>
+                        ) : (
+                          <span className="auction-order-tier-empty">미지정</span>
+                        )}
                       </div>
                       <span className="auction-order-line">
                         {entry.player?.positions?.length > 0 ? entry.player.positions.join(' / ') : '라인 미지정'}

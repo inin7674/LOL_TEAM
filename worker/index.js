@@ -97,6 +97,15 @@ function buildDefaultRoom(roomCode) {
   };
 }
 
+function shuffleInPlace(list) {
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = list[i];
+    list[i] = list[j];
+    list[j] = tmp;
+  }
+}
+
 function roomPublicState(room) {
   return {
     roomCode: room.roomCode,
@@ -282,9 +291,9 @@ export class AuctionRoomDO {
     const seconds = Math.max(5, Math.min(60, Number.parseInt(body.seconds || this.room.config.seconds, 10) || DEFAULT_SECONDS));
     this.room.config.seconds = seconds;
 
-    const idx = Math.floor(Math.random() * this.room.queue.length);
-    const current = this.room.queue[idx];
-    this.room.queue.splice(idx, 1);
+    // Set a real order once at start by shuffling queue, then consume from the front.
+    shuffleInPlace(this.room.queue);
+    const current = this.room.queue.shift();
     this.room.current = current;
     this.room.bids = {};
     this.room.round.running = true;
@@ -292,6 +301,7 @@ export class AuctionRoomDO {
     this.room.round.endsAt = Date.now() + seconds * 1000;
     this.room.round.remainingMs = 0;
     this.room.round.started = true;
+    this.room.logs.unshift(`경매 순서 랜덤 확정 (${this.room.queue.length + 1}명)`);
     this.room.logs.unshift(`${current.name} 경매 시작 (${seconds}초)`);
     this.room.logs = this.room.logs.slice(0, 120);
 
@@ -379,9 +389,7 @@ export class AuctionRoomDO {
 
     // Auto-continue: if queue still has players, immediately start next random round.
     if (this.room.queue.length > 0) {
-      const idx = Math.floor(Math.random() * this.room.queue.length);
-      const next = this.room.queue[idx];
-      this.room.queue.splice(idx, 1);
+      const next = this.room.queue.shift();
       this.room.current = next;
       this.room.bids = {};
       this.room.round.running = true;

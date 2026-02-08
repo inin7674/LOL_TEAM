@@ -1222,6 +1222,16 @@
   font-weight: 700;
 }
 
+.auction-order-tier {
+  font-size: 0.66rem;
+  padding: 0.08rem 0.35rem;
+}
+
+.auction-order-tier-empty {
+  color: #97bddf;
+  font-size: 0.7rem;
+}
+
 .auction-order-line {
   color: #9fc4e2;
   white-space: nowrap;
