@@ -317,7 +317,7 @@ export class AuctionRoomDO {
       0,
       ...Object.values(this.room.bids).map((entry) => Number(entry?.amount || 0)),
     );
-    if (amount <= highestBid) return json({ error: `bid must be greater than current highest (${highestBid})` }, 400);
+    if (amount <= highestBid) return json({ error: `현재 최고 입찰가(${highestBid}P)보다 높게 입력해주세요.` }, 400);
 
     this.room.bids[captain.teamId] = { amount, at: Date.now() };
     this.room.logs.unshift(`${team.name} ${team.captainName} - ${amount}P`);
