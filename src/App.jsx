@@ -821,6 +821,7 @@ function App() {
           message.includes('room not initialized')
           || message.includes('invalid room code')
           || message.includes('요청 실패 (404)')
+          || message.includes('API 라우트를 찾을 수 없습니다.')
         )
       setAuctionError(missingRoom ? '해당하는 방이 없습니다.' : (error.message || '경매 방 입장에 실패했습니다.'))
     } finally {
