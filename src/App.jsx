@@ -588,6 +588,7 @@ function App() {
   const [isAuctionEntryOpen, setIsAuctionEntryOpen] = useState(false)
   const [isAuctionJoinOpen, setIsAuctionJoinOpen] = useState(false)
   const [isAuctionRosterOpen, setIsAuctionRosterOpen] = useState(false)
+  const [isAuctionQueueModalOpen, setIsAuctionQueueModalOpen] = useState(false)
   const [isCaptainJoinOpen, setIsCaptainJoinOpen] = useState(false)
   const [isCaptainJoinBlockedOpen, setIsCaptainJoinBlockedOpen] = useState(false)
   const [captainJoinTeamId, setCaptainJoinTeamId] = useState('')
@@ -626,6 +627,8 @@ function App() {
   const auctionWsRef = useRef(null)
   const roomCodeToastTimerRef = useRef(null)
   const topMessageTimerRef = useRef(null)
+  const autoAuctionAddTimerRef = useRef(null)
+  const lastAutoAuctionInputRef = useRef('')
 
   useEffect(() => {
     const onPopState = () => {
@@ -915,6 +918,28 @@ function App() {
     }
   }
 
+  const removeAuctionQueuePlayer = async (player) => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken || !player) return
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/queue-remove`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ playerId: player.id, playerName: player.name }),
+        },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+    } catch (error) {
+      setAuctionError(error.message || '대기 명단 삭제에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
   const drawAuctionPlayer = async () => {
     const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
     if (!auctionRoomCode || !hostToken) return
@@ -1153,6 +1178,9 @@ function App() {
       if (topMessageTimerRef.current) {
         window.clearTimeout(topMessageTimerRef.current)
       }
+      if (autoAuctionAddTimerRef.current) {
+        window.clearTimeout(autoAuctionAddTimerRef.current)
+      }
       if (roomCodeToastTimerRef.current) {
         window.clearTimeout(roomCodeToastTimerRef.current)
       }
@@ -1161,6 +1189,26 @@ function App() {
       auctionWsRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (!isAuctionRosterOpen || !isAuctionHost || auctionBusy) return
+    if (!auctionRoomCode || !auctionSessionToken) return
+    const next = auctionInput.trim()
+    if (!next || next === lastAutoAuctionInputRef.current) return
+    if (parsePlayers(next).length === 0) return
+    if (autoAuctionAddTimerRef.current) {
+      window.clearTimeout(autoAuctionAddTimerRef.current)
+    }
+    autoAuctionAddTimerRef.current = window.setTimeout(() => {
+      lastAutoAuctionInputRef.current = next
+      loadAuctionPlayersFromInput()
+    }, 420)
+  }, [auctionInput, isAuctionRosterOpen, isAuctionHost, auctionBusy, auctionRoomCode, auctionSessionToken])
+
+  useEffect(() => {
+    if (auctionInput.trim()) return
+    lastAutoAuctionInputRef.current = ''
+  }, [auctionInput])
 
   useEffect(() => {
     if (route === ROUTE.AUCTION || !auctionWsRef.current) return
@@ -1421,6 +1469,30 @@ function App() {
 
     return sections
   }, [grouped])
+
+  const auctionQueueByTier = useMemo(() => {
+    const tierRank = (tier) => {
+      const idx = TIER_ORDER.indexOf(tier)
+      return idx === -1 ? Number.MAX_SAFE_INTEGER : idx
+    }
+    const sorted = [...auctionQueue].sort((a, b) => {
+      const tierDiff = tierRank(a.tier || '') - tierRank(b.tier || '')
+      if (tierDiff !== 0) return tierDiff
+      return a.name.localeCompare(b.name)
+    })
+    const buckets = new Map()
+    sorted.forEach((player) => {
+      const key = player.tier || '미지정'
+      if (!buckets.has(key)) buckets.set(key, [])
+      buckets.get(key).push(player)
+    })
+    const sections = TIER_ORDER
+      .map((tier) => ({ tier, players: buckets.get(tier) ?? [] }))
+      .filter((section) => section.players.length > 0)
+    const unknown = buckets.get('미지정') ?? []
+    if (unknown.length > 0) sections.push({ tier: '미지정', players: unknown })
+    return sections
+  }, [auctionQueue])
 
   const renderAnimatedChars = (text, classPrefix) => (
     text.split('').map((ch, index) => (
@@ -1782,7 +1854,16 @@ function App() {
 
           <aside className="auction-order-panel">
             <div className="auction-order-section">
-              <div className="auction-order-head">경매순서</div>
+              <div className="auction-order-head auction-order-head-row">
+                <span>경매순서</span>
+                <button
+                  type="button"
+                  className="tiny"
+                  onClick={() => setIsAuctionQueueModalOpen(true)}
+                >
+                  팝업
+                </button>
+              </div>
               <div className="auction-order-grid">
                 {auctionQueue.length === 0 ? (
                   <div className="auction-empty">대기 명단 없음</div>
@@ -1865,6 +1946,49 @@ function App() {
                 <button type="button" onClick={loadAuctionPlayersFromInput} disabled={auctionBusy || !auctionSessionToken}>명단 추가</button>
                 <button type="button" className="ghost" onClick={() => setAuctionInput('')}>입력 비우기</button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {isAuctionQueueModalOpen && (
+          <div className="modal-backdrop" onMouseDown={() => setIsAuctionQueueModalOpen(false)}>
+            <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <div className="help-modal-header">
+                <h3>경매 대기 팝업</h3>
+                <button type="button" className="ghost" onClick={() => setIsAuctionQueueModalOpen(false)}>닫기</button>
+              </div>
+              {auctionQueueByTier.length === 0 ? (
+                <div className="auction-empty">대기 명단 없음</div>
+              ) : (
+                <div className="popup-tier-list">
+                  {auctionQueueByTier.map((section) => (
+                    <section key={`auction-popup-tier-${section.tier}`} className="popup-tier-group">
+                      <h4>
+                        <span className={`tier-pill ${getTierClass(section.tier)}`}>{getTierLabel(section.tier)}</span>
+                        <small>{section.players.length}명</small>
+                      </h4>
+                      <div className="popup-tier-players">
+                        {section.players.map((player) => (
+                          <div key={`auction-popup-player-${player.id}`} className="pool-row">
+                            <span className="pool-row-name">{player.name}</span>
+                            <span className="pool-row-pos">{player.positions.length > 0 ? player.positions.join(' / ') : '-'}</span>
+                            {isAuctionHost && (
+                              <button
+                                type="button"
+                                className="tiny ghost"
+                                disabled={auctionBusy || auctionRunning || auctionPaused}
+                                onClick={() => removeAuctionQueuePlayer(player)}
+                              >
+                                삭제
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

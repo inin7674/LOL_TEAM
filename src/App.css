@@ -1185,6 +1185,13 @@
   padding: 0.32rem 0.55rem;
 }
 
+.auction-order-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
 .auction-order-head-sub {
   margin-top: 0.25rem;
 }

@@ -281,6 +281,30 @@ export class AuctionRoomDO {
     return json({ ok: true, state: roomPublicState(this.room) });
   }
 
+  async removeQueuePlayer(request) {
+    if (!this.room) return json({ error: "room not initialized" }, 404);
+    if (!this.requireHost(request)) return json({ error: "host only" }, 403);
+    if (this.room.round.running || this.room.round.paused) return json({ error: "round is active or paused" }, 409);
+    const body = (await readJson(request)) || {};
+    const playerId = String(body.playerId || "").trim();
+    const playerName = normalizeName(body.playerName || "");
+    if (!playerId && !playerName) return json({ error: "playerId or playerName is required" }, 400);
+
+    const before = this.room.queue.length;
+    this.room.queue = this.room.queue.filter((player) => {
+      if (playerId && String(player.id || "") === playerId) return false;
+      if (playerName && normalizeName(player.name) === playerName) return false;
+      return true;
+    });
+    if (this.room.queue.length === before) return json({ error: "player not found in queue" }, 404);
+
+    this.room.logs.unshift("대기 명단에서 플레이어 삭제");
+    this.room.logs = this.room.logs.slice(0, 120);
+    await this.persist();
+    await this.broadcast();
+    return json({ ok: true, state: roomPublicState(this.room) });
+  }
+
   async startRound(request) {
     if (!this.room) return json({ error: "room not initialized" }, 404);
     if (!this.requireHost(request)) return json({ error: "host only" }, 403);
@@ -573,6 +597,7 @@ export class AuctionRoomDO {
     if (url.pathname === "/state" && method === "GET") return json({ ok: true, state: roomPublicState(this.room) });
     if (url.pathname === "/join" && method === "POST") return this.joinCaptain(request);
     if (url.pathname === "/add-roster" && method === "POST") return this.addRoster(request);
+    if (url.pathname === "/queue-remove" && method === "POST") return this.removeQueuePlayer(request);
     if (url.pathname === "/start-round" && method === "POST") return this.startRound(request);
     if (url.pathname === "/bid" && method === "POST") return this.placeBid(request);
     if (url.pathname === "/finish-round" && method === "POST") return this.finishRound(request);
@@ -627,6 +652,7 @@ export default {
             "POST /api/auction/rooms/:code/join",
             "GET /api/auction/rooms/:code/state",
             "POST /api/auction/rooms/:code/roster",
+            "POST /api/auction/rooms/:code/queue-remove",
             "POST /api/auction/rooms/:code/start",
             "POST /api/auction/rooms/:code/bid",
             "POST /api/auction/rooms/:code/finish",
@@ -680,6 +706,10 @@ export default {
     }
     if (url.pathname.endsWith(`/${roomCode}/roster`) && request.method === "POST") {
       const res = await forwardToRoom(env, roomCode, request, "/add-roster");
+      return withCors(res, origin);
+    }
+    if (url.pathname.endsWith(`/${roomCode}/queue-remove`) && request.method === "POST") {
+      const res = await forwardToRoom(env, roomCode, request, "/queue-remove");
       return withCors(res, origin);
     }
     if (url.pathname.endsWith(`/${roomCode}/start`) && request.method === "POST") {
