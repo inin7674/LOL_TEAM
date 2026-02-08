@@ -1629,7 +1629,7 @@ function App() {
               )}
               {auctionCurrent ? (
                 <div className="auction-current-card">
-                  <div className={`auction-current-tier-icon ${getTierClass(auctionCurrent.tier || '')}`}>
+                  <div className="auction-current-tier-icon">
                     {getTierIconUrl(auctionCurrent.tier)
                       ? (
                         <img

@@ -330,9 +330,13 @@ export class AuctionRoomDO {
     if (amount <= highestBid) return json({ error: `현재 최고 입찰가(${highestBid}P)보다 높게 입력해주세요.` }, 400);
 
     this.room.bids[captain.teamId] = { amount, at: Date.now() };
+    // Every valid bid resets the round timer to full duration.
+    this.room.round.endsAt = Date.now() + this.room.config.seconds * 1000;
+    this.room.round.remainingMs = 0;
     this.room.logs.unshift(`${team.name} ${team.captainName} - ${amount}P`);
     this.room.logs = this.room.logs.slice(0, 120);
     await this.persist();
+    await this.state.storage.setAlarm(this.room.round.endsAt);
     await this.broadcast();
     return json({ ok: true, state: roomPublicState(this.room) });
   }
