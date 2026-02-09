@@ -5,6 +5,7 @@ import './App.css'
 const ROUTE = {
   HOME: '/',
   NORMAL: '/normal',
+  ARAM: '/aram',
   AUCTION: '/auction',
 }
 
@@ -17,6 +18,7 @@ const STORAGE_KEY_AUCTION_SESSION = 'lol-team:auction-session:v1'
 function normalizeRoute(pathname) {
   if (pathname === ROUTE.AUCTION) return ROUTE.AUCTION
   if (pathname === ROUTE.NORMAL) return ROUTE.NORMAL
+  if (pathname === ROUTE.ARAM) return ROUTE.ARAM
   return ROUTE.HOME
 }
 
@@ -570,7 +572,7 @@ function PlayerPreview({ player, groupCount }) {
   )
 }
 
-function DropColumn({ id, title, count, onOpenPopup, onResetTeams, children }) {
+function DropColumn({ id, title, count, onOpenPopup, onResetTeams, onExtraAction, extraActionLabel, children }) {
   const { setNodeRef, isOver } = useDroppable({ id })
 
   return (
@@ -578,6 +580,9 @@ function DropColumn({ id, title, count, onOpenPopup, onResetTeams, children }) {
       <div className="column-title">
         <span>{title}</span>
         <div className="column-title-right">
+          {onExtraAction && extraActionLabel && (
+            <button type="button" className="tiny ghost" onClick={onExtraAction}>{extraActionLabel}</button>
+          )}
           {onResetTeams && (
             <button type="button" className="tiny ghost" onClick={onResetTeams}>팀초기화</button>
           )}
@@ -616,6 +621,7 @@ function App() {
   const [isPoolModalOpen, setIsPoolModalOpen] = useState(false)
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false)
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
+  const [isNormalModeSelectOpen, setIsNormalModeSelectOpen] = useState(false)
   const [isAuctionEntryOpen, setIsAuctionEntryOpen] = useState(false)
   const [isAuctionJoinOpen, setIsAuctionJoinOpen] = useState(false)
   const [isAuctionRosterOpen, setIsAuctionRosterOpen] = useState(false)
@@ -883,6 +889,9 @@ function App() {
     setAuctionError('')
     const next = !isAuctionEntryOpen
     setIsAuctionEntryOpen(next)
+    if (next) {
+      setIsNormalModeSelectOpen(false)
+    }
     if (!next) {
       setIsAuctionJoinOpen(false)
       setAuctionRoomDraft('')
@@ -1272,6 +1281,7 @@ function App() {
 
   const myTeam = auctionTeams.find((team) => team.id === auctionMyTeamId) ?? null
   const isAuctionFinished = isAuctionCenterUnlocked && !auctionRunning && !auctionPaused && !auctionCurrent && auctionQueue.length === 0
+  const isAramMode = route === ROUTE.ARAM
 
   const grouped = useMemo(() => {
     return {
@@ -1303,6 +1313,25 @@ function App() {
     if (event.shiftKey || event.nativeEvent.isComposing) return
     event.preventDefault()
     handleAddClick()
+  }
+
+  const randomSplitPoolToTeams = () => {
+    setPlayers((prev) => {
+      const poolPlayers = prev.filter((p) => p.team === TEAM.POOL)
+      if (poolPlayers.length === 0) return prev
+      const shuffled = [...poolPlayers]
+      for (let i = shuffled.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+      const moved = shuffled.map((player, index) => ({
+        ...player,
+        team: index % 2 === 0 ? TEAM.A : TEAM.B,
+      }))
+      const notPool = prev.filter((p) => p.team !== TEAM.POOL)
+      return [...notPool, ...moved]
+    })
+    setSelectedIds([])
   }
 
   const assignPlayer = (id, team) => {
@@ -1530,13 +1559,31 @@ function App() {
         </div>
         <p className="home-subtitle">내전 팀 구성을 빠르게 시작하세요.</p>
         <div className="home-actions">
-          <button type="button" className="home-start" onClick={() => navigate(ROUTE.NORMAL)}>
+          <button
+            type="button"
+            className={`home-start ${isNormalModeSelectOpen ? 'disabled' : ''}`}
+            onClick={() => {
+              setIsNormalModeSelectOpen(true)
+              setIsAuctionEntryOpen(false)
+              setIsAuctionJoinOpen(false)
+            }}
+          >
             일반내전
           </button>
           <button type="button" className="home-start" onClick={toggleAuctionEntryInline}>
             경매내전
           </button>
         </div>
+        {isNormalModeSelectOpen && (
+          <div className="home-normal-mode-select">
+            <button type="button" className="home-start home-mode-btn" onClick={() => navigate(ROUTE.NORMAL)}>
+              협곡
+            </button>
+            <button type="button" className="home-start home-mode-btn" onClick={() => navigate(ROUTE.ARAM)}>
+              칼바람
+            </button>
+          </div>
+        )}
         {isAuctionEntryOpen && (
           <div className={`auction-entry-inline ${isAuctionJoinOpen ? 'open' : ''}`}>
             {!isAuctionJoinOpen && (
@@ -2090,7 +2137,7 @@ function App() {
             </button>
           </div>
         </div>
-        <h1>LoL 내전 팀 빌더</h1>
+        <h1>LoL 내전 팀 빌더{isAramMode ? ' (칼바람용)' : ''}</h1>
         <p>명단 붙여넣기부터 드래그 배치까지, 한 화면에서 빠르게 진행하세요.</p>
       </header>
 
@@ -2132,6 +2179,8 @@ function App() {
             count={grouped[TEAM.POOL].length}
             onOpenPopup={() => setIsPoolModalOpen(true)}
             onResetTeams={resetTeamsToPool}
+            onExtraAction={isAramMode ? randomSplitPoolToTeams : null}
+            extraActionLabel={isAramMode ? '랜덤섞기' : ''}
           >
             {grouped[TEAM.POOL].length === 0 && <div className="empty">대기 인원이 없습니다.</div>}
             {grouped[TEAM.POOL].map((player) => (

@@ -203,6 +203,20 @@
   flex-wrap: wrap;
 }
 
+.home-normal-mode-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  width: 100%;
+}
+
+.home-mode-btn {
+  min-width: 148px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
 .home-start {
   padding: 0.6rem 1rem;
   font-size: 0.92rem;
