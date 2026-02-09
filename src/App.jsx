@@ -10,6 +10,8 @@ const ROUTE = {
 }
 
 const AUCTION_API_BASE = '/api/auction'
+const DEFAULT_AUCTION_WORKER_ORIGIN = 'https://lolteam.inin7674.workers.dev'
+const AUCTION_WORKER_ORIGIN = String(import.meta.env.VITE_AUCTION_WORKER_ORIGIN || DEFAULT_AUCTION_WORKER_ORIGIN).replace(/\/+$/, '')
 
 const STORAGE_KEY_PLAYERS = 'lol-team:players:v1'
 const STORAGE_KEY_DRAFT = 'lol-team:draft:v1'
@@ -20,6 +22,16 @@ function normalizeRoute(pathname) {
   if (pathname === ROUTE.NORMAL) return ROUTE.NORMAL
   if (pathname === ROUTE.ARAM) return ROUTE.ARAM
   return ROUTE.HOME
+}
+
+function canFallbackToWorkerOrigin() {
+  if (typeof window === 'undefined') return false
+  if (!AUCTION_WORKER_ORIGIN) return false
+  try {
+    return new URL(AUCTION_WORKER_ORIGIN).origin !== window.location.origin
+  } catch {
+    return false
+  }
 }
 
 const TEAM = {
@@ -787,6 +799,10 @@ function App() {
   }
 
   const auctionRequest = async (path, options = {}, sessionToken = '') => {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`
+    const localUrl = `${AUCTION_API_BASE}${normalizedPath}`
+    const fallbackUrl = `${AUCTION_WORKER_ORIGIN}${AUCTION_API_BASE}${normalizedPath}`
+    const allowFallback = canFallbackToWorkerOrigin()
     const headers = {
       ...(options.body ? { 'content-type': 'application/json' } : {}),
       ...(options.headers ?? {}),
@@ -794,13 +810,31 @@ function App() {
     if (sessionToken) headers['x-room-session'] = sessionToken
     let response
     try {
-      response = await fetch(`${AUCTION_API_BASE}${path}`, {
+      response = await fetch(localUrl, {
         method: options.method ?? 'GET',
         headers,
         body: options.body,
       })
     } catch {
-      throw new Error('백엔드 연결 실패: `npm run dev:cf` 또는 Worker 서버 상태를 확인하세요.')
+      if (!allowFallback) {
+        throw new Error('백엔드 연결 실패: `npm run dev:cf` 또는 Worker 서버 상태를 확인하세요.')
+      }
+      try {
+        response = await fetch(fallbackUrl, {
+          method: options.method ?? 'GET',
+          headers,
+          body: options.body,
+        })
+      } catch {
+        throw new Error('백엔드 연결 실패: `npm run dev:cf` 또는 Worker 서버 상태를 확인하세요.')
+      }
+    }
+    if (response.status === 404 && allowFallback) {
+      response = await fetch(fallbackUrl, {
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body,
+      })
     }
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
@@ -815,7 +849,8 @@ function App() {
   const connectAuctionSocket = (roomCode, sessionToken) => {
     closeAuctionSocket()
     if (!roomCode || !sessionToken) return
-    const wsUrl = new URL(`${AUCTION_API_BASE}/rooms/${roomCode}/ws`, window.location.origin)
+    const wsBase = canFallbackToWorkerOrigin() ? AUCTION_WORKER_ORIGIN : window.location.origin
+    const wsUrl = new URL(`${AUCTION_API_BASE}/rooms/${roomCode}/ws`, wsBase)
     wsUrl.searchParams.set('session', sessionToken)
     wsUrl.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(wsUrl.toString())
