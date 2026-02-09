@@ -410,6 +410,37 @@ function parsePlayers(text) {
   return Array.from(byKey.values())
 }
 
+function mergePlayersByName(basePlayers, incomingPlayers) {
+  const byKey = new Map((basePlayers || []).map((player) => [toPlayerKey(player.name), player]))
+  for (const incoming of incomingPlayers || []) {
+    const key = toPlayerKey(incoming.name)
+    if (!key) continue
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, incoming)
+      continue
+    }
+    byKey.set(key, {
+      ...existing,
+      tier: incoming.tier || existing.tier,
+      positions: [...new Set([...(existing.positions || []), ...(incoming.positions || [])])],
+    })
+  }
+  return Array.from(byKey.values())
+}
+
+function pickUniquePlayersByName(candidates, existingNameKeys = new Set()) {
+  const uniquePlayers = []
+  const seenKeys = new Set(existingNameKeys)
+  for (const player of candidates || []) {
+    const key = toPlayerKey(player.name)
+    if (!key || seenKeys.has(key)) continue
+    seenKeys.add(key)
+    uniquePlayers.push(player)
+  }
+  return uniquePlayers
+}
+
 function parseCaptainDraft(rawText) {
   const line = String(rawText ?? '')
     .split(/\r?\n/)
@@ -887,13 +918,7 @@ function App() {
       positions: player.positions,
     }))
     if (players.length === 0) return
-    const uniquePlayers = []
-    for (const player of players) {
-      const key = toPlayerKey(player.name)
-      if (!key || existingNameKeys.has(key)) continue
-      existingNameKeys.add(key)
-      uniquePlayers.push(player)
-    }
+    const uniquePlayers = pickUniquePlayersByName(players, existingNameKeys)
     if (uniquePlayers.length === 0) {
       showTopMessage('중복 제외 후 추가할 플레이어가 없습니다.', 'error')
       return
@@ -1259,27 +1284,7 @@ function App() {
   const addFromText = (text) => {
     const parsed = parsePlayers(text)
     if (parsed.length === 0) return
-    setPlayers((prev) => {
-      const byKey = new Map(prev.map((player) => [toPlayerKey(player.name), player]))
-
-      for (const incoming of parsed) {
-        const key = toPlayerKey(incoming.name)
-        const existing = byKey.get(key)
-
-        if (!existing) {
-          byKey.set(key, incoming)
-          continue
-        }
-
-        byKey.set(key, {
-          ...existing,
-          tier: incoming.tier || existing.tier,
-          positions: [...new Set([...existing.positions, ...incoming.positions])],
-        })
-      }
-
-      return Array.from(byKey.values())
-    })
+    setPlayers((prev) => mergePlayersByName(prev, parsed))
   }
 
   const handlePaste = (event) => {
