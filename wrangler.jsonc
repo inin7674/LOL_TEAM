@@ -1,7 +1,19 @@
 {
   "name": "lolteam",
   "compatibility_date": "2026-02-07",
-  "assets": {
-    "directory": "./dist"
-  }
+  "main": "worker/index.js",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AUCTION_ROOM",
+        "class_name": "AuctionRoomDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AuctionRoomDO"]
+    }
+  ]
 }

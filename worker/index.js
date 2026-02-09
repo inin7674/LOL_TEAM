@@ -643,7 +643,8 @@ export default {
       return withCors(new Response(null, { status: 204 }), origin);
     }
 
-    if (!url.pathname.startsWith("/api/auction/")) {
+    // Accept both "/api/auction" and "/api/auction/..." (trailing slash optional).
+    if (!url.pathname.startsWith("/api/auction")) {
       return withCors(
         json({
           ok: true,
