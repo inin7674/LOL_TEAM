@@ -1317,6 +1317,10 @@ function App() {
   const myTeam = auctionTeams.find((team) => team.id === auctionMyTeamId) ?? null
   const isAuctionFinished = isAuctionCenterUnlocked && !auctionRunning && !auctionPaused && !auctionCurrent && auctionQueue.length === 0
   const isAramMode = route === ROUTE.ARAM
+  const parsedBidAmount = Number.parseInt(String(auctionBidAmount).replace(/[^\d]/g, ''), 10)
+  const bidPreviewAmount = Number.isFinite(parsedBidAmount) && parsedBidAmount > 0 ? parsedBidAmount : 0
+  const isBidPreviewActive = Boolean(myTeam && bidPreviewAmount > 0)
+  const bidPreviewRemaining = myTeam ? myTeam.points - bidPreviewAmount : 0
 
   const grouped = useMemo(() => {
     return {
@@ -1688,15 +1692,20 @@ function App() {
           <button type="button" className="ghost tiny" onClick={() => navigate(ROUTE.NORMAL)}>
             일반내전 이동
           </button>
+          <button type="button" className="ghost tiny update-open-btn" onClick={() => setIsUpdateModalOpen(true)}>
+            업데이트 내역
+          </button>
           {isAuctionHost && (
             <label className="auction-seconds-control">
               경매시간(초)
               <input
                 type="number"
-                min={5}
-                max={60}
+                min={1}
                 value={auctionSeconds}
-                onChange={(e) => setAuctionSeconds(Math.min(60, Math.max(5, Number.parseInt(e.target.value || '10', 10))))}
+                onChange={(e) => {
+                  const next = Number.parseInt(e.target.value || `${DEFAULT_SECONDS}`, 10)
+                  setAuctionSeconds(Number.isFinite(next) ? Math.max(1, next) : DEFAULT_SECONDS)
+                }}
               />
             </label>
           )}
@@ -1743,7 +1752,17 @@ function App() {
                       </button>
                     )}
                   </div>
-                  <strong className="auction-points-badge">포인트 {team.points}</strong>
+                  <strong
+                    className={`auction-points-badge ${
+                      isBidPreviewActive && team.id === auctionMyTeamId ? 'preview' : ''
+                    } ${
+                      isBidPreviewActive && team.id === auctionMyTeamId && (team.points - bidPreviewAmount) < 0 ? 'preview-low' : ''
+                    }`}
+                  >
+                    {isBidPreviewActive && team.id === auctionMyTeamId
+                      ? `포인트 ${team.points} → ${team.points - bidPreviewAmount}`
+                      : `포인트 ${team.points}`}
+                  </strong>
                 </div>
                 <div className="auction-team-roster">
                   {Array.from({ length: 5 }, (_, idx) => {
@@ -1886,6 +1905,11 @@ function App() {
                     입찰 등록
                   </button>
                 </div>
+                {isBidPreviewActive && (
+                  <div className={`auction-bid-preview ${bidPreviewRemaining < 0 ? 'is-negative' : ''}`}>
+                    예상 잔여 포인트: {bidPreviewRemaining}P
+                  </div>
+                )}
               </div>
 
               <div className="auction-log-panel">
@@ -2136,6 +2160,28 @@ function App() {
               <div className="input-actions">
                 <button type="button" onClick={() => setIsCaptainJoinBlockedOpen(false)}>확인</button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {isUpdateModalOpen && (
+          <div className="modal-backdrop" onMouseDown={() => setIsUpdateModalOpen(false)}>
+            <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <div className="help-modal-header">
+                <h3>업데이트 내역</h3>
+                <button type="button" className="ghost" onClick={() => setIsUpdateModalOpen(false)}>닫기</button>
+              </div>
+
+              {CHANGELOG_ENTRIES.map((entry) => (
+                <section key={entry.date} className="modal-note update-block">
+                  <h4>{entry.date}</h4>
+                  <ul className="update-list">
+                    {entry.items.map((item, index) => (
+                      <li key={`${entry.date}-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
             </div>
           </div>
         )}

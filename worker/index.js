@@ -312,7 +312,7 @@ export class AuctionRoomDO {
     if (this.room.queue.length === 0) return json({ error: "queue is empty" }, 400);
 
     const body = (await readJson(request)) || {};
-    const seconds = Math.max(5, Math.min(60, Number.parseInt(body.seconds || this.room.config.seconds, 10) || DEFAULT_SECONDS));
+    const seconds = Math.max(1, Number.parseInt(body.seconds || this.room.config.seconds, 10) || DEFAULT_SECONDS);
     this.room.config.seconds = seconds;
 
     // Set a real order once at start by shuffling queue, then consume from the front.
