@@ -653,7 +653,8 @@ function App() {
   const [auctionError, setAuctionError] = useState('')
   const [auctionBusy, setAuctionBusy] = useState(false)
   const [auctionConnected, setAuctionConnected] = useState(false)
-  const [auctionSeconds, setAuctionSeconds] = useState(10)
+  const [auctionSeconds, setAuctionSeconds] = useState(DEFAULT_SECONDS)
+  const [auctionSecondsDraft, setAuctionSecondsDraft] = useState(String(DEFAULT_SECONDS))
   const [auctionInput, setAuctionInput] = useState('')
   const [auctionQueue, setAuctionQueue] = useState([])
   const [auctionCurrent, setAuctionCurrent] = useState(null)
@@ -767,7 +768,9 @@ function App() {
 
   const applyAuctionState = (nextState) => {
     if (!nextState) return
-    setAuctionSeconds(nextState.config?.seconds ?? 10)
+    const nextSeconds = Math.max(1, Number.parseInt(String(nextState.config?.seconds ?? DEFAULT_SECONDS), 10) || DEFAULT_SECONDS)
+    setAuctionSeconds(nextSeconds)
+    setAuctionSecondsDraft(String(nextSeconds))
     setAuctionTeams(Array.isArray(nextState.teams) ? nextState.teams : createInitialAuctionTeams())
     setAuctionQueue(Array.isArray(nextState.queue) ? nextState.queue : [])
     setAuctionCurrent(nextState.current ?? null)
@@ -1701,10 +1704,26 @@ function App() {
               <input
                 type="number"
                 min={1}
-                value={auctionSeconds}
+                value={auctionSecondsDraft}
                 onChange={(e) => {
-                  const next = Number.parseInt(e.target.value || `${DEFAULT_SECONDS}`, 10)
-                  setAuctionSeconds(Number.isFinite(next) ? Math.max(1, next) : DEFAULT_SECONDS)
+                  const raw = e.target.value
+                  if (raw === '') {
+                    setAuctionSecondsDraft('')
+                    return
+                  }
+                  const next = Number.parseInt(raw, 10)
+                  if (!Number.isFinite(next)) return
+                  setAuctionSecondsDraft(raw)
+                  setAuctionSeconds(Math.max(1, next))
+                }}
+                onBlur={() => {
+                  if (auctionSecondsDraft === '') {
+                    setAuctionSecondsDraft(String(Math.max(1, auctionSeconds || DEFAULT_SECONDS)))
+                    return
+                  }
+                  const normalized = Math.max(1, Number.parseInt(auctionSecondsDraft, 10) || DEFAULT_SECONDS)
+                  setAuctionSeconds(normalized)
+                  setAuctionSecondsDraft(String(normalized))
                 }}
               />
             </label>
