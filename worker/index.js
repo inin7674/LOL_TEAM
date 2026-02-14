@@ -514,6 +514,36 @@ export class AuctionRoomDO {
     return json({ ok: true, state: roomPublicState(this.room) });
   }
 
+  async endAuction(request) {
+    if (!this.room) return json({ error: "room not initialized" }, 404);
+    if (!this.requireHost(request)) return json({ error: "host only" }, 403);
+    if (!this.room.round.started) return json({ error: "auction not started" }, 409);
+
+    const remainingCount = this.room.queue.length + (this.room.current ? 1 : 0);
+    if (this.room.current) {
+      this.room.resolvedHistory.push({
+        type: "unsold",
+        player: this.room.current,
+      });
+      this.room.logs.unshift(`${this.room.current.name} 경매 종료로 유찰 처리`);
+    }
+
+    this.room.current = null;
+    this.room.queue = [];
+    this.room.bids = {};
+    this.room.round.running = false;
+    this.room.round.paused = false;
+    this.room.round.endsAt = 0;
+    this.room.round.remainingMs = 0;
+    this.room.round.started = true;
+    this.room.logs.unshift(`경매 즉시 종료 (${remainingCount}명 정리)`);
+    this.room.logs = this.room.logs.slice(0, 120);
+    await this.persist();
+    await this.state.storage.deleteAlarm();
+    await this.broadcast();
+    return json({ ok: true, state: roomPublicState(this.room) });
+  }
+
   async undoCurrentRound(request) {
     if (!this.room) return json({ error: "room not initialized" }, 404);
     if (!this.requireHost(request)) return json({ error: "host only" }, 403);
@@ -605,6 +635,7 @@ export class AuctionRoomDO {
     if (url.pathname === "/pause-round" && method === "POST") return this.togglePauseRound(request);
     if (url.pathname === "/restart-auction" && method === "POST") return this.restartAuction(request);
     if (url.pathname === "/undo-round" && method === "POST") return this.undoCurrentRound(request);
+    if (url.pathname === "/end-auction" && method === "POST") return this.endAuction(request);
     if (url.pathname === "/leave" && method === "POST") return this.leaveCaptain(request);
     if (url.pathname === "/ws" && request.headers.get("upgrade") === "websocket") return this.connectWebSocket(request);
     return json({ error: "not found" }, 404);
@@ -661,6 +692,7 @@ export default {
             "POST /api/auction/rooms/:code/pause",
             "POST /api/auction/rooms/:code/restart",
             "POST /api/auction/rooms/:code/undo",
+            "POST /api/auction/rooms/:code/end",
             "POST /api/auction/rooms/:code/leave",
             "GET /api/auction/rooms/:code/ws?session=...",
           ],
@@ -736,6 +768,10 @@ export default {
     }
     if (url.pathname.endsWith(`/${roomCode}/undo`) && request.method === "POST") {
       const res = await forwardToRoom(env, roomCode, request, "/undo-round");
+      return withCors(res, origin);
+    }
+    if (url.pathname.endsWith(`/${roomCode}/end`) && request.method === "POST") {
+      const res = await forwardToRoom(env, roomCode, request, "/end-auction");
       return withCors(res, origin);
     }
     if (url.pathname.endsWith(`/${roomCode}/leave`) && request.method === "POST") {

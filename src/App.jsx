@@ -697,8 +697,6 @@ function App() {
   const auctionWsRef = useRef(null)
   const roomCodeToastTimerRef = useRef(null)
   const topMessageTimerRef = useRef(null)
-  const autoAuctionAddTimerRef = useRef(null)
-  const lastAutoAuctionInputRef = useRef('')
 
   useEffect(() => {
     const onPopState = () => {
@@ -1157,21 +1155,21 @@ function App() {
     }
   }
 
-  const finishAuctionRound = async () => {
+  const finishAuctionNow = async () => {
     const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
     if (!auctionRoomCode || !hostToken) return
     setAuctionError('')
     setAuctionBusy(true)
     try {
       const response = await auctionRequest(
-        `/rooms/${auctionRoomCode}/finish`,
+        `/rooms/${auctionRoomCode}/end`,
         { method: 'POST' },
         hostToken,
       )
       applyAuctionState(response.state)
       setAuctionBidAmount('')
     } catch (error) {
-      setAuctionError(error.message || '라운드 종료에 실패했습니다.')
+      setAuctionError(error.message || '경매 종료에 실패했습니다.')
     } finally {
       setAuctionBusy(false)
     }
@@ -1274,9 +1272,6 @@ function App() {
       if (topMessageTimerRef.current) {
         window.clearTimeout(topMessageTimerRef.current)
       }
-      if (autoAuctionAddTimerRef.current) {
-        window.clearTimeout(autoAuctionAddTimerRef.current)
-      }
       if (roomCodeToastTimerRef.current) {
         window.clearTimeout(roomCodeToastTimerRef.current)
       }
@@ -1285,26 +1280,6 @@ function App() {
       auctionWsRef.current = null
     }
   }, [])
-
-  useEffect(() => {
-    if (!isAuctionRosterOpen || !isAuctionHost || auctionBusy) return
-    if (!auctionRoomCode || !auctionSessionToken) return
-    const next = auctionInput.trim()
-    if (!next || next === lastAutoAuctionInputRef.current) return
-    if (parsePlayers(next).length === 0) return
-    if (autoAuctionAddTimerRef.current) {
-      window.clearTimeout(autoAuctionAddTimerRef.current)
-    }
-    autoAuctionAddTimerRef.current = window.setTimeout(() => {
-      lastAutoAuctionInputRef.current = next
-      loadAuctionPlayersFromInput()
-    }, 420)
-  }, [auctionInput, isAuctionRosterOpen, isAuctionHost, auctionBusy, auctionRoomCode, auctionSessionToken])
-
-  useEffect(() => {
-    if (auctionInput.trim()) return
-    lastAutoAuctionInputRef.current = ''
-  }, [auctionInput])
 
   useEffect(() => {
     if (route === ROUTE.AUCTION || !auctionWsRef.current) return
@@ -1769,8 +1744,13 @@ function App() {
         </div>
         <section className="auction-layout">
           <div className="auction-team-stack">
-            {auctionTeams.map((team) => (
-              <article key={team.id} className="auction-team-card">
+            {auctionTeams.map((team) => {
+              const committedBid = Number(auctionBidMap?.[team.id]?.amount || 0)
+              const previewBid = isBidPreviewActive && team.id === auctionMyTeamId ? bidPreviewAmount : committedBid
+              const visibleBid = Math.max(0, previewBid)
+              const visiblePoints = team.points - visibleBid
+              return (
+                <article key={team.id} className="auction-team-card">
                 <div className="auction-team-head">
                   <div className="auction-team-title-wrap">
                     <div className="auction-team-name-text">{team.name}</div>
@@ -1793,13 +1773,13 @@ function App() {
                   </div>
                   <strong
                     className={`auction-points-badge ${
-                      isBidPreviewActive && team.id === auctionMyTeamId ? 'preview' : ''
+                      visibleBid > 0 ? 'preview' : ''
                     } ${
-                      isBidPreviewActive && team.id === auctionMyTeamId && (team.points - bidPreviewAmount) < 0 ? 'preview-low' : ''
+                      visiblePoints < 0 ? 'preview-low' : ''
                     }`}
                   >
-                    {isBidPreviewActive && team.id === auctionMyTeamId
-                      ? `포인트 ${team.points} → ${team.points - bidPreviewAmount}`
+                    {visibleBid > 0
+                      ? `포인트 ${visiblePoints} (-${visibleBid})`
                       : `포인트 ${team.points}`}
                   </strong>
                 </div>
@@ -1831,8 +1811,9 @@ function App() {
                     )
                   })}
                 </div>
-              </article>
-            ))}
+                </article>
+              )
+            })}
           </div>
 
           <div className="auction-center-stage">
@@ -2005,80 +1986,89 @@ function App() {
               <button
                 type="button"
                 className="tiny auction-action-finish-btn"
-                onClick={finishAuctionRound}
-                disabled={!isAuctionHost || !auctionRunning || !auctionSessionToken}
+                onClick={finishAuctionNow}
+                disabled={!isAuctionHost || !auctionSessionToken || !isAuctionCenterUnlocked || isAuctionFinished}
               >
-                라운드 종료
+                경매 종료
               </button>
               <div className="auction-waiting-count">대기 선수 {auctionQueue.length}명</div>
             </div>
           </div>
 
           <aside className="auction-order-panel">
-            <div className="auction-order-section">
-              <div className="auction-order-head auction-order-head-row">
-                <span>경매순서</span>
-                <button
-                  type="button"
-                  className="tiny"
-                  onClick={() => setIsAuctionQueueModalOpen(true)}
-                >
-                  팝업
-                </button>
-              </div>
-              <div className="auction-order-grid">
-                {auctionQueue.length === 0 ? (
-                  <div className="auction-empty">대기 명단 없음</div>
-                ) : (
-                  auctionQueue.map((player) => (
-                    <div key={`queue-${player.id}`} className="auction-order-item">
-                      <div className="auction-order-title">
-                        <strong>{player.name}</strong>
-                        {player.tier ? (
-                          <span className={`tier-pill auction-order-tier ${getTierClass(player.tier)}`}>
-                            {player.tier}
+            {isAuctionCenterUnlocked ? (
+              <>
+                <div className="auction-order-section">
+                  <div className="auction-order-head auction-order-head-row">
+                    <span>경매순서</span>
+                    <button
+                      type="button"
+                      className="tiny"
+                      onClick={() => setIsAuctionQueueModalOpen(true)}
+                    >
+                      팝업
+                    </button>
+                  </div>
+                  <div className="auction-order-grid">
+                    {auctionQueue.length === 0 ? (
+                      <div className="auction-empty">대기 명단 없음</div>
+                    ) : (
+                      auctionQueue.map((player) => (
+                        <div key={`queue-${player.id}`} className="auction-order-item">
+                          <div className="auction-order-title">
+                            <strong>{player.name}</strong>
+                            {player.tier ? (
+                              <span className={`tier-pill auction-order-tier ${getTierClass(player.tier)}`}>
+                                {player.tier}
+                              </span>
+                            ) : (
+                              <span className="auction-order-tier-empty">미지정</span>
+                            )}
+                          </div>
+                          <span className="auction-order-line">
+                            {player.positions.length > 0 ? player.positions.join(' / ') : '라인 미지정'}
                           </span>
-                        ) : (
-                          <span className="auction-order-tier-empty">미지정</span>
-                        )}
-                      </div>
-                      <span className="auction-order-line">
-                        {player.positions.length > 0 ? player.positions.join(' / ') : '라인 미지정'}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-            <div className="auction-order-section">
-              <div className="auction-order-head auction-order-head-sub">유찰/낙찰 선수</div>
-              <div className="auction-order-grid">
-                {auctionResolvedHistory.length === 0 ? (
-                  <div className="auction-empty">아직 낙찰 선수 없음</div>
-                ) : (
-                  [...auctionResolvedHistory].reverse().map((entry, index) => (
-                    <div key={`resolved-${entry.player?.id || index}-${index}`} className={`auction-order-item ${entry.type === 'sold' ? 'sold' : 'unsold'}`}>
-                      <div className="auction-order-title">
-                        <strong>{entry.player?.name || '-'}</strong>
-                        {entry.player?.tier ? (
-                          <span className={`tier-pill auction-order-tier ${getTierClass(entry.player.tier)}`}>
-                            {entry.player.tier}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="auction-order-section">
+                  <div className="auction-order-head auction-order-head-sub">유찰/낙찰 선수</div>
+                  <div className="auction-order-grid">
+                    {auctionResolvedHistory.length === 0 ? (
+                      <div className="auction-empty">아직 낙찰 선수 없음</div>
+                    ) : (
+                      [...auctionResolvedHistory].reverse().map((entry, index) => (
+                        <div key={`resolved-${entry.player?.id || index}-${index}`} className={`auction-order-item ${entry.type === 'sold' ? 'sold' : 'unsold'}`}>
+                          <div className="auction-order-title">
+                            <strong>{entry.player?.name || '-'}</strong>
+                            {entry.player?.tier ? (
+                              <span className={`tier-pill auction-order-tier ${getTierClass(entry.player.tier)}`}>
+                                {entry.player.tier}
+                              </span>
+                            ) : (
+                              <span className="auction-order-tier-empty">미지정</span>
+                            )}
+                          </div>
+                          <span className="auction-order-line">
+                            {entry.player?.positions?.length > 0 ? entry.player.positions.join(' / ') : '라인 미지정'}
                           </span>
-                        ) : (
-                          <span className="auction-order-tier-empty">미지정</span>
-                        )}
-                      </div>
-                      <span className="auction-order-line">
-                        {entry.player?.positions?.length > 0 ? entry.player.positions.join(' / ') : '라인 미지정'}
-                      </span>
-                      <span className="auction-order-result">
-                        {entry.type === 'sold' ? `낙찰${entry.amount ? ` ${entry.amount}P` : ''}` : '유찰'}
-                      </span>
-                    </div>
-                  ))
-                )}
+                          <span className="auction-order-result">
+                            {entry.type === 'sold' ? `낙찰${entry.amount ? ` ${entry.amount}P` : ''}` : '유찰'}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="auction-order-section">
+                <div className="auction-order-head auction-order-head-sub">경매순서</div>
+                <div className="auction-empty">경매 시작 후 표시됩니다.</div>
               </div>
-            </div>
+            )}
           </aside>
         </section>
 
