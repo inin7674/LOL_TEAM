@@ -53,7 +53,7 @@ function createInitialAuctionTeams() {
   }))
 }
 
-const CHANGELOG_ENTRIES = [
+const CHANGELOG_ENTRIES_NORMAL = [
   {
     date: '2026-02-08',
     items: [
@@ -76,6 +76,25 @@ const CHANGELOG_ENTRIES = [
     items: [
       '팝업에서 티어별로 확인하고 바로 팀 배정할 수 있어요.',
       '여러 명을 선택해서 한 번에 이동하는 기능이 더 안정적이에요.',
+    ],
+  },
+]
+
+const CHANGELOG_ENTRIES_AUCTION = [
+  {
+    date: '2026-02-14',
+    items: [
+      '경매시간 입력값을 비워도 다시 입력할 수 있게 개선했어요.',
+      '입찰 금액 입력 시 내 팀 포인트의 예상 잔여값을 실시간으로 보여줘요.',
+      '입찰 금액은 10단위 검증을 유지하고, 입력 미리보기는 음수 여부를 색으로 구분해요.',
+    ],
+  },
+  {
+    date: '2026-02-13',
+    items: [
+      '방만들기/방참가 흐름의 API 연결 안정성을 개선했어요.',
+      'Pages Functions 프록시로 /api/auction 경로를 라우팅하도록 구성했어요.',
+      '경매 라운드 진행 로그와 포인트 표기를 가독성 있게 정리했어요.',
     ],
   },
 ]
@@ -2187,11 +2206,11 @@ function App() {
           <div className="modal-backdrop" onMouseDown={() => setIsUpdateModalOpen(false)}>
             <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
               <div className="help-modal-header">
-                <h3>업데이트 내역</h3>
+                <h3>업데이트 내역 (경매내전)</h3>
                 <button type="button" className="ghost" onClick={() => setIsUpdateModalOpen(false)}>닫기</button>
               </div>
 
-              {CHANGELOG_ENTRIES.map((entry) => (
+              {CHANGELOG_ENTRIES_AUCTION.map((entry) => (
                 <section key={entry.date} className="modal-note update-block">
                   <h4>{entry.date}</h4>
                   <ul className="update-list">
@@ -2447,11 +2466,11 @@ function App() {
         <div className="modal-backdrop" onMouseDown={() => setIsUpdateModalOpen(false)}>
           <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="help-modal-header">
-              <h3>업데이트 내역</h3>
+              <h3>업데이트 내역 (일반내전)</h3>
               <button type="button" className="ghost" onClick={() => setIsUpdateModalOpen(false)}>닫기</button>
             </div>
 
-            {CHANGELOG_ENTRIES.map((entry) => (
+            {CHANGELOG_ENTRIES_NORMAL.map((entry) => (
               <section key={entry.date} className="modal-note update-block">
                 <h4>{entry.date}</h4>
                 <ul className="update-list">
