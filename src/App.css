@@ -634,6 +634,17 @@
   border-color: #3c88c9;
 }
 
+.auction-action-round-finish-btn {
+  background: #12617c;
+  border-color: #2282a3;
+  color: #e3f8ff;
+}
+
+.auction-action-round-finish-btn:hover {
+  background: #16708f;
+  border-color: #2f92b4;
+}
+
 .auction-action-restart-btn {
   background: #7a5b16;
   border-color: #a17b22;
@@ -738,6 +749,49 @@
   min-width: 0;
 }
 
+.auction-points-wrap {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.auction-points-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.auction-points-edit-icon {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #cde6ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.16s ease;
+}
+
+.auction-points-edit-icon .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.auction-points-edit-icon:hover,
+.auction-points-edit-icon:focus,
+.auction-points-edit-icon:focus-visible,
+.auction-points-edit-icon:active {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transform: scale(1.08);
+  outline: none;
+}
+
 .auction-captain-input,
 .auction-bid-row input {
   background: rgba(8, 22, 35, 0.9);
@@ -785,6 +839,16 @@
   color: #07372a;
   font-size: 0.78rem;
   padding: 0.24rem 0.4rem;
+}
+
+.auction-points-badge.preview {
+  background: #c1f6ff;
+  color: #08333f;
+}
+
+.auction-points-badge.preview-low {
+  background: #ff9b9b;
+  color: #4f0b0b;
 }
 
 .auction-team-roster {
@@ -1070,6 +1134,17 @@
   grid-template-columns: minmax(180px, 1fr) 120px auto;
   gap: 0.45rem;
   align-items: center;
+}
+
+.auction-bid-preview {
+  font-size: 0.78rem;
+  color: #9ef4c8;
+  padding: 0.12rem 0.1rem 0 0.15rem;
+}
+
+.auction-bid-preview.is-negative {
+  color: #ffb7b7;
+  font-weight: 700;
 }
 
 .auction-single-bid-row input {
@@ -1820,6 +1895,13 @@ button.danger {
   gap: 0.6rem;
 }
 
+.auction-modal-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
 .help-modal-header h3 {
   margin: 0;
   font-size: 1rem;
@@ -1846,6 +1928,31 @@ button.danger {
 
 .modal-note p + p {
   margin-top: 0.35rem;
+}
+
+.help-modal.auction-point-modal {
+  width: min(360px, 92vw);
+}
+
+.auction-point-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.auction-point-modal-field span {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.auction-point-modal-field input {
+  width: 100%;
+  min-height: 38px;
+  background: rgba(8, 22, 35, 0.9);
+  border: 1px solid rgba(88, 130, 169, 0.4);
+  border-radius: 10px;
+  color: var(--text-main);
+  padding: 0.45rem 0.55rem;
 }
 
 .update-list {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core'
 import './App.css'
 
@@ -88,6 +88,8 @@ const CHANGELOG_ENTRIES_AUCTION = [
       '경매시간 입력값을 비워도 다시 입력할 수 있게 개선했어요.',
       '입찰 금액 입력 시 내 팀 포인트의 예상 잔여값을 실시간으로 보여줘요.',
       '입찰 금액은 10단위 검증을 유지하고, 입력 미리보기는 음수 여부를 색으로 구분해요.',
+      '방장이 팀 포인트를 포인트 배지 옆 수정 아이콘으로 열어 모달에서 변경할 수 있어요.',
+      '중앙 액션 버튼에 라운드 종료를 다시 추가해 즉시 현재 라운드를 마감할 수 있어요.',
     ],
   },
   {
@@ -372,7 +374,7 @@ function parseNameAndDetail(line) {
 
   if (!normalized.includes('#')) return null
 
-  const [leftRaw, ...restParts] = normalized.split(/[\/|]/)
+  const [leftRaw, ...restParts] = normalized.split(/[|/]/)
   const rightRaw = restParts.join(' ')
 
   const left = leftRaw.trim()
@@ -492,7 +494,7 @@ function parseCaptainDraft(rawText) {
     }
   }
 
-  const [namePart, ...detailParts] = line.split(/[\/|]/)
+  const [namePart, ...detailParts] = line.split(/[|/]/)
   const name = (namePart || '').trim()
   const detail = detailParts.join(' ').trim()
   if (!name) return null
@@ -518,7 +520,7 @@ function getAuctionLogClass(line) {
   return classes.join(' ')
 }
 
-function DraggablePlayer({ player, onAssign, onRemove, selected, onToggleSelect, ghosted }) {
+function DraggablePlayer({ player, onRemove, selected, onToggleSelect, ghosted }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: player.id,
   })
@@ -665,7 +667,7 @@ function App() {
   const [route, setRoute] = useState(() => normalizeRoute(window.location.pathname))
   const [isCapturing, setIsCapturing] = useState(false)
   const [isAuctionHost, setIsAuctionHost] = useState(false)
-  const [auctionHostName, setAuctionHostName] = useState('방장')
+  const [auctionHostName] = useState('방장')
   const [auctionRoomDraft, setAuctionRoomDraft] = useState('')
   const [auctionRoomCode, setAuctionRoomCode] = useState('')
   const [auctionHostSessionToken, setAuctionHostSessionToken] = useState('')
@@ -690,6 +692,9 @@ function App() {
   const [auctionResolvedHistory, setAuctionResolvedHistory] = useState([])
   const [isAuctionCenterUnlocked, setIsAuctionCenterUnlocked] = useState(false)
   const [auctionCanUndo, setAuctionCanUndo] = useState(false)
+  const [isAuctionPointModalOpen, setIsAuctionPointModalOpen] = useState(false)
+  const [auctionPointModalTeamId, setAuctionPointModalTeamId] = useState('')
+  const [auctionPointModalDraft, setAuctionPointModalDraft] = useState('')
   const [isRoomCodeCopied, setIsRoomCodeCopied] = useState(false)
   const [topMessage, setTopMessage] = useState({ text: '', type: '' })
   const teamAColumnRef = useRef(null)
@@ -777,14 +782,14 @@ function App() {
     }, duration)
   }
 
-  const closeAuctionSocket = () => {
+  const closeAuctionSocket = useCallback(() => {
     if (!auctionWsRef.current) return
     auctionWsRef.current.close()
     auctionWsRef.current = null
     setAuctionConnected(false)
-  }
+  }, [])
 
-  const applyAuctionState = (nextState) => {
+  const applyAuctionState = useCallback((nextState) => {
     if (!nextState) return
     const nextSeconds = Math.max(1, Number.parseInt(String(nextState.config?.seconds ?? DEFAULT_SECONDS), 10) || DEFAULT_SECONDS)
     setAuctionSeconds(nextSeconds)
@@ -817,7 +822,7 @@ function App() {
       setAuctionTimeLeft(0)
       return
     }
-  }
+  }, [])
 
   const auctionRequest = async (path, options = {}, sessionToken = '') => {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`
@@ -867,7 +872,7 @@ function App() {
     return data
   }
 
-  const connectAuctionSocket = (roomCode, sessionToken) => {
+  const connectAuctionSocket = useCallback((roomCode, sessionToken) => {
     closeAuctionSocket()
     if (!roomCode || !sessionToken) return
     const wsBase = canFallbackToWorkerOrigin() ? AUCTION_WORKER_ORIGIN : window.location.origin
@@ -889,7 +894,7 @@ function App() {
       }
     }
     auctionWsRef.current = ws
-  }
+  }, [applyAuctionState, closeAuctionSocket])
 
   const openAuctionRoom = async (asHost) => {
     setAuctionError('')
@@ -1030,6 +1035,32 @@ function App() {
     }
   }
 
+  const clearAuctionQueue = async () => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!isAuctionHost || !auctionRoomCode || !hostToken) return
+    if (auctionRunning || auctionPaused) {
+      setAuctionError('진행 중에는 명단 초기화를 할 수 없습니다.')
+      return
+    }
+    if (auctionQueue.length === 0) return
+    if (!window.confirm('대기 명단을 모두 초기화할까요?')) return
+
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/queue-clear`,
+        { method: 'POST' },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+    } catch (error) {
+      setAuctionError(error.message || '명단 초기화에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
   const drawAuctionPlayer = async () => {
     const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
     if (!auctionRoomCode || !hostToken) return
@@ -1155,6 +1186,26 @@ function App() {
     }
   }
 
+  const finishAuctionRound = async () => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken) return
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/finish`,
+        { method: 'POST' },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+      setAuctionBidAmount('')
+    } catch (error) {
+      setAuctionError(error.message || '라운드 종료에 실패했습니다.')
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
   const finishAuctionNow = async () => {
     const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
     if (!auctionRoomCode || !hostToken) return
@@ -1172,6 +1223,59 @@ function App() {
       setAuctionError(error.message || '경매 종료에 실패했습니다.')
     } finally {
       setAuctionBusy(false)
+    }
+  }
+
+  const updateAuctionTeamPoints = async (teamId, rawDraft) => {
+    const hostToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
+    if (!auctionRoomCode || !hostToken || !teamId) return false
+    const raw = String(rawDraft ?? '').trim()
+    const parsed = Number.parseInt(raw, 10)
+    if (!Number.isFinite(parsed)) {
+      setAuctionError('포인트는 숫자로 입력해주세요.')
+      return false
+    }
+    const points = Math.max(0, parsed)
+    setAuctionError('')
+    setAuctionBusy(true)
+    try {
+      const response = await auctionRequest(
+        `/rooms/${auctionRoomCode}/points`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ teamId, points }),
+        },
+        hostToken,
+      )
+      applyAuctionState(response.state)
+      return true
+    } catch (error) {
+      setAuctionError(error.message || '포인트 수정에 실패했습니다.')
+      return false
+    } finally {
+      setAuctionBusy(false)
+    }
+  }
+
+  const openAuctionPointModal = (team) => {
+    if (!isAuctionHost || !team) return
+    setAuctionError('')
+    setAuctionPointModalTeamId(team.id)
+    setAuctionPointModalDraft(String(Math.max(0, Number.parseInt(String(team.points ?? 0), 10) || 0)))
+    setIsAuctionPointModalOpen(true)
+  }
+
+  const closeAuctionPointModal = () => {
+    setIsAuctionPointModalOpen(false)
+    setAuctionPointModalTeamId('')
+    setAuctionPointModalDraft('')
+  }
+
+  const submitAuctionPointModal = async () => {
+    if (!auctionPointModalTeamId) return
+    const ok = await updateAuctionTeamPoints(auctionPointModalTeamId, auctionPointModalDraft)
+    if (ok) {
+      closeAuctionPointModal()
     }
   }
 
@@ -1294,9 +1398,8 @@ function App() {
     const token = auctionSessionToken || auctionHostSessionToken
     if (!auctionRoomCode || !token) return
     connectAuctionSocket(auctionRoomCode, token)
-  }, [route, auctionRoomCode, auctionSessionToken, auctionHostSessionToken, auctionConnected])
+  }, [route, auctionRoomCode, auctionSessionToken, auctionHostSessionToken, auctionConnected, connectAuctionSocket])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (route !== ROUTE.AUCTION || !auctionRoomCode || auctionConnected) return
     const refreshState = async () => {
@@ -1310,11 +1413,13 @@ function App() {
     refreshState()
     const timer = window.setInterval(refreshState, 3000)
     return () => window.clearInterval(timer)
-  }, [route, auctionRoomCode, auctionConnected])
+  }, [route, auctionRoomCode, auctionConnected, applyAuctionState])
 
   const myTeam = auctionTeams.find((team) => team.id === auctionMyTeamId) ?? null
+  const auctionPointModalTeam = auctionTeams.find((team) => team.id === auctionPointModalTeamId) ?? null
   const isAuctionFinished = isAuctionCenterUnlocked && !auctionRunning && !auctionPaused && !auctionCurrent && auctionQueue.length === 0
   const isAramMode = route === ROUTE.ARAM
+  const auctionActionToken = isAuctionHost ? auctionHostSessionToken : auctionSessionToken
   const parsedBidAmount = Number.parseInt(String(auctionBidAmount).replace(/[^\d]/g, ''), 10)
   const bidPreviewAmount = Number.isFinite(parsedBidAmount) && parsedBidAmount > 0 ? parsedBidAmount : 0
   const isBidPreviewActive = Boolean(myTeam && bidPreviewAmount > 0)
@@ -1478,7 +1583,7 @@ function App() {
         }
       }
       showTopMessage('이 브라우저는 이미지 클립보드 복사를 지원하지 않습니다.', 'error')
-    } catch (error) {
+    } catch {
       showTopMessage('캡처를 완료하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.', 'error')
     } finally {
       setIsCapturing(false)
@@ -1771,17 +1876,33 @@ function App() {
                       </button>
                     )}
                   </div>
-                  <strong
-                    className={`auction-points-badge ${
-                      visibleBid > 0 ? 'preview' : ''
-                    } ${
-                      visiblePoints < 0 ? 'preview-low' : ''
-                    }`}
-                  >
-                    {visibleBid > 0
-                      ? `포인트 ${visiblePoints} (-${visibleBid})`
-                      : `포인트 ${team.points}`}
-                  </strong>
+                  <div className="auction-points-wrap">
+                    <div className="auction-points-row">
+                      <strong
+                        className={`auction-points-badge ${
+                          visibleBid > 0 ? 'preview' : ''
+                        } ${
+                          visiblePoints < 0 ? 'preview-low' : ''
+                        }`}
+                      >
+                        {visibleBid > 0
+                          ? `포인트 ${visiblePoints} (-${visibleBid})`
+                          : `포인트 ${team.points}`}
+                      </strong>
+                      {isAuctionHost && (
+                        <button
+                          type="button"
+                          className="auction-points-edit-icon"
+                          onClick={() => openAuctionPointModal(team)}
+                          disabled={!auctionActionToken || auctionBusy}
+                          aria-label={`${team.name} 포인트 수정`}
+                          title={`${team.name} 포인트 수정`}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden="true">edit</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="auction-team-roster">
                   {Array.from({ length: 5 }, (_, idx) => {
@@ -1969,9 +2090,17 @@ function App() {
               </button>
               <button
                 type="button"
+                className="tiny auction-action-round-finish-btn"
+                onClick={finishAuctionRound}
+                disabled={!isAuctionHost || !auctionActionToken || !auctionRunning || !auctionCurrent}
+              >
+                라운드 종료
+              </button>
+              <button
+                type="button"
                 className={`tiny auction-pause-btn ${auctionPaused ? 'is-paused' : ''}`}
                 onClick={togglePauseAuctionRound}
-                disabled={!isAuctionHost || !auctionSessionToken || (!auctionRunning && !auctionPaused)}
+                disabled={!isAuctionHost || !auctionActionToken || (!auctionRunning && !auctionPaused)}
               >
                 {auctionPaused ? '재개' : '일시 정지'}
               </button>
@@ -1979,7 +2108,7 @@ function App() {
                 type="button"
                 className="tiny auction-action-restart-btn"
                 onClick={restartAuctionRound}
-                disabled={!isAuctionHost || !auctionSessionToken || !isAuctionCenterUnlocked}
+                disabled={!isAuctionHost || !auctionActionToken || !isAuctionCenterUnlocked}
               >
                 경매 재시작
               </button>
@@ -1987,7 +2116,7 @@ function App() {
                 type="button"
                 className="tiny auction-action-finish-btn"
                 onClick={finishAuctionNow}
-                disabled={!isAuctionHost || !auctionSessionToken || !isAuctionCenterUnlocked || isAuctionFinished}
+                disabled={!isAuctionHost || !auctionActionToken || !isAuctionCenterUnlocked || isAuctionFinished}
               >
                 경매 종료
               </button>
@@ -2000,7 +2129,7 @@ function App() {
               <>
                 <div className="auction-order-section">
                   <div className="auction-order-head auction-order-head-row">
-                    <span>경매순서</span>
+                    <span>경매순서 ({auctionQueue.length}명)</span>
                     <button
                       type="button"
                       className="tiny"
@@ -2065,7 +2194,16 @@ function App() {
               </>
             ) : (
               <div className="auction-order-section">
-                <div className="auction-order-head auction-order-head-sub">경매순서</div>
+                <div className="auction-order-head auction-order-head-row">
+                  <span>경매순서 ({auctionQueue.length}명)</span>
+                  <button
+                    type="button"
+                    className="tiny"
+                    onClick={() => setIsAuctionQueueModalOpen(true)}
+                  >
+                    팝업
+                  </button>
+                </div>
                 <div className="auction-empty">경매 시작 후 표시됩니다.</div>
               </div>
             )}
@@ -2073,7 +2211,13 @@ function App() {
         </section>
 
         {isAuctionRosterOpen && isAuctionHost && (
-          <div className="modal-backdrop" onMouseDown={() => setIsAuctionRosterOpen(false)}>
+          <div
+            className="modal-backdrop"
+            onClick={(e) => {
+              if (e.target !== e.currentTarget) return
+              setIsAuctionRosterOpen(false)
+            }}
+          >
             <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
               <div className="help-modal-header">
                 <h3>경매 명단 입력</h3>
@@ -2095,19 +2239,83 @@ function App() {
                 rows={4}
               />
               <div className="input-actions">
-                <button type="button" onClick={loadAuctionPlayersFromInput} disabled={auctionBusy || !auctionSessionToken}>명단 추가</button>
+                <button type="button" onClick={loadAuctionPlayersFromInput} disabled={auctionBusy || !auctionActionToken}>명단 추가</button>
                 <button type="button" className="ghost" onClick={() => setAuctionInput('')}>입력 비우기</button>
               </div>
             </div>
           </div>
         )}
 
+        {isAuctionPointModalOpen && isAuctionHost && (
+          <div
+            className="modal-backdrop"
+            onClick={(e) => {
+              if (e.target !== e.currentTarget) return
+              closeAuctionPointModal()
+            }}
+          >
+            <div className="help-modal auction-point-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <div className="help-modal-header">
+                <h3>{auctionPointModalTeam ? `${auctionPointModalTeam.name} 포인트 수정` : '포인트 수정'}</h3>
+                <button type="button" className="ghost" onClick={closeAuctionPointModal}>닫기</button>
+              </div>
+              <section className="modal-note">
+                <p>현재 포인트: {auctionPointModalTeam?.points ?? 0}P</p>
+              </section>
+              <label className="auction-point-modal-field">
+                <span>수정 포인트</span>
+                <input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={auctionPointModalDraft}
+                  onChange={(e) => setAuctionPointModalDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+                      e.preventDefault()
+                      submitAuctionPointModal()
+                    }
+                  }}
+                  disabled={!auctionActionToken || auctionBusy}
+                  autoFocus
+                />
+              </label>
+              <div className="input-actions">
+                <button type="button" onClick={submitAuctionPointModal} disabled={!auctionActionToken || auctionBusy}>
+                  적용
+                </button>
+                <button type="button" className="ghost" onClick={closeAuctionPointModal}>
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isAuctionQueueModalOpen && (
-          <div className="modal-backdrop" onMouseDown={() => setIsAuctionQueueModalOpen(false)}>
+          <div
+            className="modal-backdrop"
+            onClick={(e) => {
+              if (e.target !== e.currentTarget) return
+              setIsAuctionQueueModalOpen(false)
+            }}
+          >
             <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
               <div className="help-modal-header">
                 <h3>경매 대기 팝업</h3>
-                <button type="button" className="ghost" onClick={() => setIsAuctionQueueModalOpen(false)}>닫기</button>
+                <div className="auction-modal-header-actions">
+                  {isAuctionHost && (
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={clearAuctionQueue}
+                      disabled={auctionBusy || auctionRunning || auctionPaused || auctionQueue.length === 0 || !auctionActionToken}
+                    >
+                      명단 초기화
+                    </button>
+                  )}
+                  <button type="button" className="ghost" onClick={() => setIsAuctionQueueModalOpen(false)}>닫기</button>
+                </div>
               </div>
               {auctionQueueByTier.length === 0 ? (
                 <div className="auction-empty">대기 명단 없음</div>
@@ -2146,7 +2354,13 @@ function App() {
         )}
 
         {isCaptainJoinOpen && (
-          <div className="modal-backdrop" onMouseDown={() => setIsCaptainJoinOpen(false)}>
+          <div
+            className="modal-backdrop"
+            onClick={(e) => {
+              if (e.target !== e.currentTarget) return
+              setIsCaptainJoinOpen(false)
+            }}
+          >
             <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
               <div className="help-modal-header">
                 <h3>주장 참가</h3>
@@ -2177,7 +2391,13 @@ function App() {
         )}
 
         {isCaptainJoinBlockedOpen && (
-          <div className="modal-backdrop" onMouseDown={() => setIsCaptainJoinBlockedOpen(false)}>
+          <div
+            className="modal-backdrop"
+            onClick={(e) => {
+              if (e.target !== e.currentTarget) return
+              setIsCaptainJoinBlockedOpen(false)
+            }}
+          >
             <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
               <div className="help-modal-header">
                 <h3>안내</h3>
@@ -2194,7 +2414,13 @@ function App() {
         )}
 
         {isUpdateModalOpen && (
-          <div className="modal-backdrop" onMouseDown={() => setIsUpdateModalOpen(false)}>
+          <div
+            className="modal-backdrop"
+            onClick={(e) => {
+              if (e.target !== e.currentTarget) return
+              setIsUpdateModalOpen(false)
+            }}
+          >
             <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
               <div className="help-modal-header">
                 <h3>업데이트 내역 (경매내전)</h3>
@@ -2297,7 +2523,6 @@ function App() {
               <DraggablePlayer
                 key={player.id}
                 player={player}
-                onAssign={assignPlayer}
                 onRemove={removePlayer}
                 selected={selectedIds.includes(player.id)}
                 onToggleSelect={toggleSelect}
@@ -2312,7 +2537,6 @@ function App() {
                 <DraggablePlayer
                   key={player.id}
                   player={player}
-                  onAssign={assignPlayer}
                   onRemove={removePlayer}
                   selected={selectedIds.includes(player.id)}
                   onToggleSelect={toggleSelect}
@@ -2351,7 +2575,6 @@ function App() {
                 <DraggablePlayer
                   key={player.id}
                   player={player}
-                  onAssign={assignPlayer}
                   onRemove={removePlayer}
                   selected={selectedIds.includes(player.id)}
                   onToggleSelect={toggleSelect}
@@ -2370,7 +2593,13 @@ function App() {
       </DndContext>
 
       {isPoolModalOpen && (
-        <div className="modal-backdrop" onMouseDown={() => setIsPoolModalOpen(false)}>
+        <div
+          className="modal-backdrop"
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return
+            setIsPoolModalOpen(false)
+          }}
+        >
           <div className="pool-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="pool-modal-header">
               <h3>팀 배정 팝업 (드래그 없이 버튼으로 배정)</h3>
@@ -2407,7 +2636,13 @@ function App() {
       )}
 
       {isHelpModalOpen && (
-        <div className="modal-backdrop" onMouseDown={() => setIsHelpModalOpen(false)}>
+        <div
+          className="modal-backdrop"
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return
+            setIsHelpModalOpen(false)
+          }}
+        >
           <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="help-modal-header">
               <h3>사용방법</h3>
@@ -2454,7 +2689,13 @@ function App() {
       )}
 
       {isUpdateModalOpen && (
-        <div className="modal-backdrop" onMouseDown={() => setIsUpdateModalOpen(false)}>
+        <div
+          className="modal-backdrop"
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return
+            setIsUpdateModalOpen(false)
+          }}
+        >
           <div className="help-modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="help-modal-header">
               <h3>업데이트 내역 (일반내전)</h3>

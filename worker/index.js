@@ -305,6 +305,45 @@ export class AuctionRoomDO {
     return json({ ok: true, state: roomPublicState(this.room) });
   }
 
+  async clearQueue(request) {
+    if (!this.room) return json({ error: "room not initialized" }, 404);
+    if (!this.requireHost(request)) return json({ error: "host only" }, 403);
+    if (this.room.round.running || this.room.round.paused) return json({ error: "round is active or paused" }, 409);
+
+    const removedCount = this.room.queue.length;
+    this.room.queue = [];
+    this.room.logs.unshift(`대기 명단 초기화 - ${removedCount}명 삭제`);
+    this.room.logs = this.room.logs.slice(0, 120);
+    await this.persist();
+    await this.broadcast();
+    return json({ ok: true, state: roomPublicState(this.room) });
+  }
+
+  async updateTeamPoints(request) {
+    if (!this.room) return json({ error: "room not initialized" }, 404);
+    if (!this.requireHost(request)) return json({ error: "host only" }, 403);
+    const body = (await readJson(request)) || {};
+    const teamId = String(body.teamId || "").toUpperCase();
+    const nextPoints = Number.parseInt(body.points, 10);
+    if (!teamId) return json({ error: "teamId is required" }, 400);
+    if (!Number.isFinite(nextPoints)) return json({ error: "invalid points" }, 400);
+    const team = this.room.teams.find((entry) => entry.id === teamId);
+    if (!team) return json({ error: "invalid teamId" }, 400);
+
+    const normalizedPoints = Math.max(0, nextPoints);
+    const committedBid = Number(this.room.bids?.[teamId]?.amount || 0);
+    if ((this.room.round.running || this.room.round.paused) && normalizedPoints < committedBid) {
+      return json({ error: `현재 입찰가(${committedBid}P) 이상으로 설정해주세요.` }, 400);
+    }
+
+    team.points = normalizedPoints;
+    this.room.logs.unshift(`${team.name} 포인트 수정 - ${normalizedPoints}P`);
+    this.room.logs = this.room.logs.slice(0, 120);
+    await this.persist();
+    await this.broadcast();
+    return json({ ok: true, state: roomPublicState(this.room) });
+  }
+
   async startRound(request) {
     if (!this.room) return json({ error: "room not initialized" }, 404);
     if (!this.requireHost(request)) return json({ error: "host only" }, 403);
@@ -625,6 +664,8 @@ export class AuctionRoomDO {
     if (url.pathname === "/join" && method === "POST") return this.joinCaptain(request);
     if (url.pathname === "/add-roster" && method === "POST") return this.addRoster(request);
     if (url.pathname === "/queue-remove" && method === "POST") return this.removeQueuePlayer(request);
+    if (url.pathname === "/queue-clear" && method === "POST") return this.clearQueue(request);
+    if (url.pathname === "/update-points" && method === "POST") return this.updateTeamPoints(request);
     if (url.pathname === "/start-round" && method === "POST") return this.startRound(request);
     if (url.pathname === "/bid" && method === "POST") return this.placeBid(request);
     if (url.pathname === "/finish-round" && method === "POST") return this.finishRound(request);
@@ -682,6 +723,8 @@ export default {
             "GET /api/auction/rooms/:code/state",
             "POST /api/auction/rooms/:code/roster",
             "POST /api/auction/rooms/:code/queue-remove",
+            "POST /api/auction/rooms/:code/queue-clear",
+            "POST /api/auction/rooms/:code/points",
             "POST /api/auction/rooms/:code/start",
             "POST /api/auction/rooms/:code/bid",
             "POST /api/auction/rooms/:code/finish",
@@ -740,6 +783,14 @@ export default {
     }
     if (url.pathname.endsWith(`/${roomCode}/queue-remove`) && request.method === "POST") {
       const res = await forwardToRoom(env, roomCode, request, "/queue-remove");
+      return withCors(res, origin);
+    }
+    if (url.pathname.endsWith(`/${roomCode}/queue-clear`) && request.method === "POST") {
+      const res = await forwardToRoom(env, roomCode, request, "/queue-clear");
+      return withCors(res, origin);
+    }
+    if (url.pathname.endsWith(`/${roomCode}/points`) && request.method === "POST") {
+      const res = await forwardToRoom(env, roomCode, request, "/update-points");
       return withCors(res, origin);
     }
     if (url.pathname.endsWith(`/${roomCode}/start`) && request.method === "POST") {
