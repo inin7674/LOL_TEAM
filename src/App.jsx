@@ -10,6 +10,7 @@ const ROUTE = {
 }
 
 const AUCTION_API_BASE = '/api/auction'
+const DEFAULT_SECONDS = 10
 const DEFAULT_AUCTION_WORKER_ORIGIN = 'https://lolteam.inin7674.workers.dev'
 const AUCTION_WORKER_ORIGIN = String(import.meta.env.VITE_AUCTION_WORKER_ORIGIN || DEFAULT_AUCTION_WORKER_ORIGIN).replace(/\/+$/, '')
 
