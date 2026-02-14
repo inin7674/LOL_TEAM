@@ -521,22 +521,18 @@ export class AuctionRoomDO {
 
     const remainingCount = this.room.queue.length + (this.room.current ? 1 : 0);
     if (this.room.current) {
-      this.room.resolvedHistory.push({
-        type: "unsold",
-        player: this.room.current,
-      });
-      this.room.logs.unshift(`${this.room.current.name} 경매 종료로 유찰 처리`);
+      this.room.queue.unshift(this.room.current);
+      this.room.logs.unshift(`${this.room.current.name} 경매 종료로 대기열 복귀`);
     }
 
     this.room.current = null;
-    this.room.queue = [];
     this.room.bids = {};
     this.room.round.running = false;
     this.room.round.paused = false;
     this.room.round.endsAt = 0;
     this.room.round.remainingMs = 0;
-    this.room.round.started = true;
-    this.room.logs.unshift(`경매 즉시 종료 (${remainingCount}명 정리)`);
+    this.room.round.started = false;
+    this.room.logs.unshift(`경매 즉시 종료 (${remainingCount}명 보존)`);
     this.room.logs = this.room.logs.slice(0, 120);
     await this.persist();
     await this.state.storage.deleteAlarm();
