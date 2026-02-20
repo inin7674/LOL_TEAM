@@ -14,11 +14,17 @@ function json(data, status = 200, extraHeaders = {}) {
 }
 
 function withCors(res, origin = "*") {
-  const next = new Response(res.body, res);
-  next.headers.set("access-control-allow-origin", origin);
-  next.headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
-  next.headers.set("access-control-allow-headers", "content-type,x-room-session");
-  return next;
+  // WebSocket upgrade responses (101) must be returned as-is.
+  if (res.status === 101) return res;
+  const headers = new Headers(res.headers);
+  headers.set("access-control-allow-origin", origin);
+  headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
+  headers.set("access-control-allow-headers", "content-type,x-room-session");
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
 }
 
 async function readJson(request) {
@@ -687,6 +693,18 @@ export class AuctionRoomDO {
   webSocketMessage() {
     // no-op; writes are handled via HTTP APIs.
   }
+
+  webSocketClose() {
+    // no-op for hibernation mode.
+  }
+
+  webSocketError(ws) {
+    try {
+      ws.close(1011, "socket error");
+    } catch {
+      // no-op
+    }
+  }
 }
 
 async function forwardToRoom(env, roomCode, request, doPath) {
@@ -826,8 +844,8 @@ export default {
       return withCors(res, origin);
     }
     if (url.pathname.endsWith(`/${roomCode}/ws`) && request.headers.get("upgrade") === "websocket") {
-      const res = await forwardToRoom(env, roomCode, request, "/ws");
-      return withCors(res, origin);
+      // Do not wrap 101 WebSocket responses with CORS headers.
+      return forwardToRoom(env, roomCode, request, "/ws");
     }
 
     return withCors(json({ error: "not found" }, 404), origin);

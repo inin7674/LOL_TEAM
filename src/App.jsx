@@ -11,6 +11,8 @@ const ROUTE = {
 
 const AUCTION_API_BASE = '/api/auction'
 const DEFAULT_SECONDS = 10
+const DISCONNECTED_POLL_MS = 15000
+const WS_RETRY_MS = 12000
 const DEFAULT_AUCTION_WORKER_ORIGIN = 'https://lolteam.inin7674.workers.dev'
 const AUCTION_WORKER_ORIGIN = String(import.meta.env.VITE_AUCTION_WORKER_ORIGIN || DEFAULT_AUCTION_WORKER_ORIGIN).replace(/\/+$/, '')
 
@@ -915,7 +917,6 @@ function App() {
         setIsAuctionEntryOpen(false)
         setIsAuctionJoinOpen(false)
         navigate(ROUTE.AUCTION)
-        connectAuctionSocket(created.roomCode, created.hostSession ?? '')
         return
       }
 
@@ -1175,7 +1176,6 @@ function App() {
       setAuctionSessionToken(response.sessionToken ?? '')
       setAuctionMyTeamId(response.myTeamId ?? '')
       applyAuctionState(response.state)
-      connectAuctionSocket(auctionRoomCode, response.sessionToken ?? '')
       setIsCaptainJoinOpen(false)
       setCaptainJoinTeamId('')
       setCaptainJoinDraft('')
@@ -1394,15 +1394,29 @@ function App() {
 
   useEffect(() => {
     if (route !== ROUTE.AUCTION) return
-    if (auctionConnected) return
     const token = auctionSessionToken || auctionHostSessionToken
     if (!auctionRoomCode || !token) return
-    connectAuctionSocket(auctionRoomCode, token)
+    const maybeConnect = () => {
+      const existing = auctionWsRef.current
+      if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
+        return
+      }
+      connectAuctionSocket(auctionRoomCode, token)
+    }
+
+    maybeConnect()
+    if (auctionConnected) return
+    const retryTimer = window.setInterval(() => {
+      if (document.hidden) return
+      maybeConnect()
+    }, WS_RETRY_MS)
+    return () => window.clearInterval(retryTimer)
   }, [route, auctionRoomCode, auctionSessionToken, auctionHostSessionToken, auctionConnected, connectAuctionSocket])
 
   useEffect(() => {
     if (route !== ROUTE.AUCTION || !auctionRoomCode || auctionConnected) return
     const refreshState = async () => {
+      if (document.hidden) return
       try {
         const response = await auctionRequest(`/rooms/${auctionRoomCode}/state`)
         applyAuctionState(response.state)
@@ -1411,7 +1425,7 @@ function App() {
       }
     }
     refreshState()
-    const timer = window.setInterval(refreshState, 3000)
+    const timer = window.setInterval(refreshState, DISCONNECTED_POLL_MS)
     return () => window.clearInterval(timer)
   }, [route, auctionRoomCode, auctionConnected, applyAuctionState])
 
