@@ -58,6 +58,14 @@ function createInitialAuctionTeams() {
 
 const CHANGELOG_ENTRIES_NORMAL = [
   {
+    date: '2026-02-26',
+    items: [
+      '닉네임 카드 동작을 단순화해 클릭 시 전적 조회 없이 바로 복사 아이콘만 사용하도록 정리했어요.',
+      '대기/팀/팝업 영역의 닉네임 표기를 동일한 형태로 맞춰 화면 일관성을 높였어요.',
+      '불필요한 전적 조회 UI를 정리해 일반내전 화면이 더 가볍게 동작해요.',
+    ],
+  },
+  {
     date: '2026-02-08',
     items: [
       '홈 화면과 일반내전 화면을 분리해 이동이 더 쉬워졌어요.',
@@ -84,6 +92,14 @@ const CHANGELOG_ENTRIES_NORMAL = [
 ]
 
 const CHANGELOG_ENTRIES_AUCTION = [
+  {
+    date: '2026-02-26',
+    items: [
+      '경매내전의 닉네임 클릭 전적 조회를 제거하고 닉네임 복사 기능만 유지하도록 변경했어요.',
+      'Worker에서 Riot 전적 라우트를 제거해 Cloudflare 무료 사용량을 아끼도록 정리했어요.',
+      '전적 조회 모달 및 관련 오류 처리 코드를 제거해 경매 화면 안정성을 높였어요.',
+    ],
+  },
   {
     date: '2026-02-14',
     items: [
