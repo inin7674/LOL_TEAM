@@ -592,6 +592,57 @@
   font-size: 1rem;
 }
 
+.name-copy-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.name-copy-truncate {
+  width: 100%;
+}
+
+.name-copy-value {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name-copy-btn {
+  min-width: 16px;
+  min-height: 16px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #cde6ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  transition: transform 0.16s ease;
+}
+
+.name-copy-btn .material-symbols-outlined {
+  font-size: 0.94rem;
+}
+
+.name-copy-btn:hover,
+.name-copy-btn:focus,
+.name-copy-btn:focus-visible,
+.name-copy-btn:active {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transform: scale(1.08);
+  outline: none;
+}
+
 .auction-center-actions button {
   min-height: 36px;
   padding: 0.45rem 0.9rem;
@@ -1026,6 +1077,17 @@
   margin: 0;
 }
 
+.auction-current-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.auction-current-name-btn {
+  font-size: 1.17em;
+  font-weight: 700;
+}
+
 .auction-current-player p {
   margin: 0.35rem 0 0;
   color: var(--text-muted);
@@ -1111,6 +1173,16 @@
 
 .auction-next-player-main strong {
   font-size: 0.92rem;
+  color: #e4f4ff;
+}
+
+.auction-next-name-row {
+  max-width: 100%;
+}
+
+.auction-next-name-btn {
+  font-size: 0.92rem;
+  font-weight: 700;
   color: #e4f4ff;
 }
 
@@ -1311,6 +1383,15 @@
 
 .auction-order-item strong {
   font-size: 0.76rem;
+  color: #e3f3ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auction-order-name-btn {
+  font-size: 0.76rem;
+  font-weight: 700;
   color: #e3f3ff;
   white-space: nowrap;
   overflow: hidden;

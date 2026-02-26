@@ -734,7 +734,7 @@ export default {
       return withCors(
         json({
           ok: true,
-          service: "auction-backend",
+          service: "lolteam-backend",
           routes: [
             "POST /api/auction/rooms/create",
             "POST /api/auction/rooms/:code/join",

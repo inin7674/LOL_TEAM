@@ -522,7 +522,7 @@ function getAuctionLogClass(line) {
   return classes.join(' ')
 }
 
-function DraggablePlayer({ player, onRemove, selected, onToggleSelect, ghosted }) {
+function DraggablePlayer({ player, onRemove, onCopyName, selected, onToggleSelect, ghosted }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: player.id,
   })
@@ -552,7 +552,28 @@ function DraggablePlayer({ player, onRemove, selected, onToggleSelect, ghosted }
       <div className="player-main">
         <div className="player-head">
           <div className="player-name-wrap">
-            <div className="player-name">{player.name}</div>
+            <div className="name-copy-inline">
+              <div className="player-name name-copy-value">
+                {player.name}
+              </div>
+              <button
+                type="button"
+                className="name-copy-btn"
+                aria-label={`${player.name} 복사`}
+                title="닉네임 복사"
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onCopyName?.(player.name)
+                }}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">content_copy</span>
+              </button>
+            </div>
             {player.tier && <span className={`tier-pill ${getTierClass(player.tier)}`}>{getTierLabel(player.tier)}</span>}
           </div>
           <button
@@ -1355,6 +1376,18 @@ function App() {
     }
   }
 
+  const copyPlayerName = async (name) => {
+    const value = String(name || '').trim()
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setAuctionError('')
+      showTopMessage('닉네임이 복사되었습니다.', 'success', 1200)
+    } catch {
+      setAuctionError('닉네임 복사에 실패했습니다.')
+    }
+  }
+
   useEffect(() => {
     if (!auctionError) return
     showTopMessage(auctionError, 'error')
@@ -1927,7 +1960,20 @@ function App() {
                         {player ? (
                           <>
                             <div className="auction-roster-main">
-                              <span className="auction-roster-name">{player.name}</span>
+                              <div className="name-copy-inline">
+                                <div className="auction-roster-name name-copy-value">
+                                  {player.name}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="name-copy-btn"
+                                  onClick={() => copyPlayerName(player.name)}
+                                  aria-label={`${player.name} 복사`}
+                                  title="닉네임 복사"
+                                >
+                                  <span className="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                                </button>
+                              </div>
                               {idx === 0 && <span className="auction-captain-badge">주장</span>}
                               {player.tier && (
                                 <span className={`tier-pill ${getTierClass(player.tier)}`}>
@@ -1977,7 +2023,20 @@ function App() {
                       )
                       : <span className="auction-tier-icon-fallback">?</span>}
                   </div>
-                  <h3>{auctionCurrent.name}</h3>
+                  <div className="auction-current-name-row">
+                    <div className="auction-current-name-btn">
+                      {auctionCurrent.name}
+                    </div>
+                    <button
+                      type="button"
+                      className="name-copy-btn"
+                      onClick={() => copyPlayerName(auctionCurrent.name)}
+                      aria-label={`${auctionCurrent.name} 복사`}
+                      title="닉네임 복사"
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                    </button>
+                  </div>
                   <p>{auctionCurrent.positions.length > 0 ? auctionCurrent.positions.join(' / ') : '라인 미지정'}</p>
                   <div className="auction-timer">{auctionTimeLeft}s</div>
                 </div>
@@ -2021,7 +2080,20 @@ function App() {
                   <div className="auction-empty">대기 명단 없음</div>
                 ) : (
                   <div className="auction-next-player-main">
-                    <strong>{auctionQueue[0].name}</strong>
+                    <div className="name-copy-inline auction-next-name-row">
+                      <div className="auction-next-name-btn name-copy-value">
+                        {auctionQueue[0].name}
+                      </div>
+                      <button
+                        type="button"
+                        className="name-copy-btn"
+                        onClick={() => copyPlayerName(auctionQueue[0].name)}
+                        aria-label={`${auctionQueue[0].name} 복사`}
+                        title="닉네임 복사"
+                      >
+                        <span className="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                      </button>
+                    </div>
                     <span>
                       {auctionQueue[0].tier || '티어 미지정'} | {auctionQueue[0].positions.length > 0 ? auctionQueue[0].positions.join(' / ') : '라인 미지정'}
                     </span>
@@ -2159,7 +2231,20 @@ function App() {
                       auctionQueue.map((player) => (
                         <div key={`queue-${player.id}`} className="auction-order-item">
                           <div className="auction-order-title">
-                            <strong>{player.name}</strong>
+                            <div className="name-copy-inline name-copy-truncate">
+                              <div className="auction-order-name-btn name-copy-value">
+                                {player.name}
+                              </div>
+                              <button
+                                type="button"
+                                className="name-copy-btn"
+                                onClick={() => copyPlayerName(player.name)}
+                                aria-label={`${player.name} 복사`}
+                                title="닉네임 복사"
+                              >
+                                <span className="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                              </button>
+                            </div>
                             {player.tier ? (
                               <span className={`tier-pill auction-order-tier ${getTierClass(player.tier)}`}>
                                 {player.tier}
@@ -2185,7 +2270,21 @@ function App() {
                       [...auctionResolvedHistory].reverse().map((entry, index) => (
                         <div key={`resolved-${entry.player?.id || index}-${index}`} className={`auction-order-item ${entry.type === 'sold' ? 'sold' : 'unsold'}`}>
                           <div className="auction-order-title">
-                            <strong>{entry.player?.name || '-'}</strong>
+                            <div className="name-copy-inline name-copy-truncate">
+                              <div className="auction-order-name-btn name-copy-value">
+                                {entry.player?.name || '-'}
+                              </div>
+                              <button
+                                type="button"
+                                className="name-copy-btn"
+                                onClick={() => copyPlayerName(entry.player?.name || '')}
+                                aria-label={`${entry.player?.name || '선수'} 복사`}
+                                title="닉네임 복사"
+                                disabled={!entry.player?.name}
+                              >
+                                <span className="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                              </button>
+                            </div>
                             {entry.player?.tier ? (
                               <span className={`tier-pill auction-order-tier ${getTierClass(entry.player.tier)}`}>
                                 {entry.player.tier}
@@ -2344,7 +2443,20 @@ function App() {
                       <div className="popup-tier-players">
                         {section.players.map((player) => (
                           <div key={`auction-popup-player-${player.id}`} className="pool-row">
-                            <span className="pool-row-name">{player.name}</span>
+                            <div className="name-copy-inline">
+                              <div className="pool-row-name name-copy-value">
+                                {player.name}
+                              </div>
+                              <button
+                                type="button"
+                                className="name-copy-btn"
+                                onClick={() => copyPlayerName(player.name)}
+                                aria-label={`${player.name} 복사`}
+                                title="닉네임 복사"
+                              >
+                                <span className="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                              </button>
+                            </div>
                             <span className="pool-row-pos">{player.positions.length > 0 ? player.positions.join(' / ') : '-'}</span>
                             {isAuctionHost && (
                               <button
@@ -2538,6 +2650,7 @@ function App() {
                 key={player.id}
                 player={player}
                 onRemove={removePlayer}
+                onCopyName={copyPlayerName}
                 selected={selectedIds.includes(player.id)}
                 onToggleSelect={toggleSelect}
                 ghosted={activeId !== null && draggingIds.includes(player.id)}
@@ -2552,6 +2665,7 @@ function App() {
                   key={player.id}
                   player={player}
                   onRemove={removePlayer}
+                  onCopyName={copyPlayerName}
                   selected={selectedIds.includes(player.id)}
                   onToggleSelect={toggleSelect}
                   ghosted={activeId !== null && draggingIds.includes(player.id)}
@@ -2590,6 +2704,7 @@ function App() {
                   key={player.id}
                   player={player}
                   onRemove={removePlayer}
+                  onCopyName={copyPlayerName}
                   selected={selectedIds.includes(player.id)}
                   onToggleSelect={toggleSelect}
                   ghosted={activeId !== null && draggingIds.includes(player.id)}
@@ -2632,7 +2747,9 @@ function App() {
                     {section.players.map((player) => (
                       <div key={player.id} className="popup-line-row">
                         <div className="popup-line-main">
-                          <span className="pool-row-name">{player.name}</span>
+                          <div className="pool-row-name">
+                            {player.name}
+                          </div>
                           <span className="pool-row-pos">{player.positions.length > 0 ? player.positions.join(' / ') : '-'}</span>
                         </div>
                         <div className="pool-row-actions">
